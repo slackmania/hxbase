@@ -101,8 +101,18 @@ def cmd_build(args):
     pkg_dir = os.path.dirname(os.path.abspath(__file__))
     # standalone loader: beagyazott pcode + hxbase runtime import (mellekelt csomagbol)
     stub = f'''import base64, json, os, sys
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 PCODE_B64 = "{b64}"
+def _basedir():
+    # hordozhato: HXBASE_DIR > exe melle > aktualis konyvtar
+    if os.environ.get("HXBASE_DIR"):
+        return os.environ["HXBASE_DIR"]
+    if getattr(sys, "frozen", False):
+        return os.path.dirname(os.path.abspath(sys.executable))
+    try:
+        return os.path.dirname(os.path.abspath(__file__))
+    except NameError:
+        return os.getcwd()
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))) if "__file__" in globals() and not getattr(sys, "frozen", False) else None
 from hxbase.screen import HeadlessScreen
 from hxbase.db import DBManager
 from hxbase.vm import VM
@@ -117,7 +127,7 @@ def _screen():
         print("[hxbase] GUI nem erheto, headless: " + str(e))
         return HeadlessScreen()
 def main():
-    base = os.path.dirname(os.path.abspath(__file__))
+    base = _basedir()
     pcode = json.loads(base64.b64decode(PCODE_B64).decode("utf-8"))
     sc = _screen()
     dbm = DBManager(base)
@@ -147,10 +157,12 @@ if __name__ == "__main__":
     with open(os.path.join(dist_src, "_boot.py"), "w", encoding="utf-8") as f:
         f.write(stub)
     fused = os.path.join(work, "standalone.py")
+    import re as _re
+    _m = _re.search(r"^sys\.path\.insert.*$", stub, _re.M)
+    fused_stub = stub.replace(_m.group(0), f"sys.path.insert(0, {json.dumps(dist_src)})") if _m else stub
     with open(fused, "w", encoding="utf-8") as f:
-        f.write(stub.replace('sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))',
-                             f'sys.path.insert(0, {json.dumps(dist_src)})'))
-    print(f"p-kod beagyazva: {{len(pcode['code'])}} utasitas")
+        f.write(fused_stub)
+    print(f"p-kod beagyazva: {len(pcode['code'])} utasitas")
     print(f"forras-csomag: {dist_src}")
     # PyInstaller kiserlet
     exe_out = os.path.abspath(out_exe)
@@ -163,13 +175,21 @@ if __name__ == "__main__":
             ins = subprocess.run([sys.executable, "-m", "pip", "install", "--quiet", "pyinstaller"], timeout=300)
             if ins.returncode != 0:
                 raise RuntimeError("pip install pyinstaller sikertelen")
-        cmd = [sys.executable, "-m", "PyInstaller", "--onefile", "--console",
+        cmd = [sys.executable, "-m", "PyInstaller", "--onefile", "--console", "--clean",
                "--name", os.path.splitext(os.path.basename(exe_out))[0],
+               "--paths", dist_src,
+               "--hidden-import", "hxbase",
+               "--hidden-import", "hxbase.screen",
+               "--hidden-import", "hxbase.db",
+               "--hidden-import", "hxbase.vm",
+               "--hidden-import", "hxbase.parser",
+               "--hidden-import", "hxbase.compiler",
+               "--hidden-import", "hxbase.lexer",
                "--distpath", os.path.dirname(exe_out) or ".",
                "--workpath", os.path.join(work, "pyi_build"),
                "--specpath", work,
                os.path.join(dist_src, "_boot.py")]
-        # tkinter miatt hidden imports altalaban automatikus
+        # tkinter-t a PyInstaller hook automatikusan csomagolja
         print("EXE keszites: " + " ".join(cmd))
         pr = subprocess.run(cmd, timeout=600)
         if pr.returncode == 0 and os.path.exists(exe_out):
