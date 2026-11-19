@@ -109,14 +109,52 @@ class HeadlessScreen:
             self.colors[r][c + i] = (fg, bg)
 
     def get(self, row, col, varname, picture=None):
-        self.pending_gets.append({"row": row, "col": col, "var": varname, "picture": picture})
+        self.pending_gets.append({"kind": "get", "row": row, "col": col, "var": varname, "picture": picture})
 
-    def read(self, memvars):
+    def checkbox(self, row, col, varname, prompt=""):
+        self.pending_gets.append({"kind": "checkbox", "row": row, "col": col, "var": varname, "prompt": prompt})
+
+    def radio(self, row, col, varname, options, title=""):
+        self.pending_gets.append({"kind": "radio", "row": row, "col": col, "var": varname,
+                                 "options": options, "title": title})
+
+    def button(self, row, col, label, action):
+        self.pending_gets.append({"kind": "button", "row": row, "col": col, "label": label, "action": action})
+
+    @staticmethod
+    def _apply_picture(value, picture):
+        if picture and isinstance(value, str) and "!" in picture.upper():
+            return value.upper()
+        return value
+
+    def read(self, memvars, action_fn=None):
         # headless: elore beadott inputs vagy ures string; kepre is kirajzoljuk
         for g in self.pending_gets:
-            v = self.inputs.get(g["var"].upper(), memvars.get(g["var"].upper(), ""))
-            memvars[g["var"].upper()] = v
-            self.say(g["row"], g["col"], str(v))
+            kind = g.get("kind", "get")
+            if kind == "get":
+                v = self.inputs.get(g["var"].upper(), memvars.get(g["var"].upper(), ""))
+                v = self._apply_picture(v, g.get("picture"))
+                memvars[g["var"].upper()] = v
+                self.say(g["row"], g["col"], str(v))
+            elif kind == "checkbox":
+                raw = self.inputs.get(g["var"].upper(), memvars.get(g["var"].upper(), False))
+                v = raw if isinstance(raw, bool) else (str(raw).strip().upper() in (".T.", "T", "Y", "1", "IGEN", "I", "TRUE"))
+                memvars[g["var"].upper()] = v
+                self.say(g["row"], g["col"], ("[X] " if v else "[ ] ") + str(g.get("prompt") or g["var"]))
+            elif kind == "radio":
+                opts = g.get("options") or []
+                raw = self.inputs.get(g["var"].upper(), memvars.get(g["var"].upper(), 1))
+                try:
+                    v = int(raw)
+                except Exception:
+                    v = next((i + 1 for i, o in enumerate(opts) if str(o).strip().upper() == str(raw).strip().upper()), 1)
+                v = max(1, min(v, len(opts) or 1))
+                memvars[g["var"].upper()] = v
+                txt = " / ".join(("[%s] %s" % ("X" if i + 1 == v else " ", o)) for i, o in enumerate(opts))
+                self.say(g["row"], g["col"], (str(g.get("title")) + ": " if g.get("title") else "") + txt)
+            elif kind == "button":
+                self.say(g["row"], g["col"], "[ %s ]" % g.get("label"))
+                self.list_out("BUTTON: %s (headless modban nem kattinthato)" % g.get("label"))
         self.pending_gets = []
 
     def text_row(self, r):
@@ -208,32 +246,65 @@ class GuiScreen(HeadlessScreen):
         fh = self.font.metrics("linespace")
         return col * fw + 4, row * fh + 2
 
-    def read(self, memvars):
+    def read(self, memvars, action_fn=None):
         if self._closed:
-            return super().read(memvars)
+            return super().read(memvars, action_fn)
         import tkinter as tk
-        # minden GET-hez egy Entry a megfelelo cellanal
-        self._result = {}
         win = tk.Toplevel(self.root)
         win.title("Adatbevitel (READ)")
         win.configure(bg="#111111")
-        vars_ = {}
+        vars_ = {}   # MEMVAR -> StringVar/IntVar/BooleanVar
+        kinds = {}   # MEMVAR -> kind
+        pics = {}
         for g in self.pending_gets:
+            kind = g.get("kind", "get")
             frame = tk.Frame(win, bg="#111111")
             frame.pack(fill="x", padx=8, pady=2)
-            tk.Label(frame, text=f"{g['var']} ({g['row']},{g['col']}):",
-                     bg="#111111", fg="white", font=self.font).pack(side="left")
-            sv = tk.StringVar(value=str(memvars.get(g["var"].upper(), "")))
-            ent = tk.Entry(frame, textvariable=sv, font=self.font, width=30,
-                           bg="white", fg="black")
-            ent.pack(side="left", padx=6)
-            vars_[g["var"].upper()] = sv
-            # tukrozzuk a gridre is
-            x, y = self._cell_xy(g["row"], g["col"])
-            ghost = tk.Entry(self.root, font=self.font, width=20)
-            ghost.place(x=x, y=y)
-            ghost.insert(0, sv.get())
-            self._entries.append(ghost)
+            if kind == "get":
+                tk.Label(frame, text=f"{g['var']} ({g['row']},{g['col']}):",
+                         bg="#111111", fg="white", font=self.font).pack(side="left")
+                sv = tk.StringVar(value=str(memvars.get(g["var"].upper(), "")))
+                tk.Entry(frame, textvariable=sv, font=self.font, width=30,
+                         bg="white", fg="black").pack(side="left", padx=6)
+                vars_[g["var"].upper()] = sv
+                kinds[g["var"].upper()] = "get"
+                pics[g["var"].upper()] = g.get("picture")
+                x, y = self._cell_xy(g["row"], g["col"])
+                ghost = tk.Entry(self.root, font=self.font, width=20)
+                ghost.place(x=x, y=y)
+                ghost.insert(0, sv.get())
+                self._entries.append(ghost)
+            elif kind == "checkbox":
+                bv = tk.BooleanVar(value=bool(memvars.get(g["var"].upper(), False)))
+                tk.Checkbutton(frame, text=str(g.get("prompt") or g["var"]),
+                               variable=bv, bg="#111111", fg="white", selectcolor="#333333",
+                               font=self.font).pack(side="left")
+                vars_[g["var"].upper()] = bv
+                kinds[g["var"].upper()] = "checkbox"
+            elif kind == "radio":
+                opts = g.get("options") or []
+                tk.Label(frame, text=str(g.get("title") or g["var"]) + ":",
+                         bg="#111111", fg="white", font=self.font).pack(anchor="w")
+                iv = tk.IntVar(value=int(memvars.get(g["var"].upper(), 1) or 1))
+                for i, o in enumerate(opts, 1):
+                    tk.Radiobutton(frame, text=str(o), value=i, variable=iv,
+                                   bg="#111111", fg="white", selectcolor="#333333",
+                                   font=self.font).pack(anchor="w", padx=12)
+                vars_[g["var"].upper()] = iv
+                kinds[g["var"].upper()] = "radio"
+            elif kind == "button":
+                act = g.get("action")
+                def _fire(a=act):
+                    try:
+                        if action_fn is not None:
+                            action_fn(a)
+                    except Exception as e:
+                        try:
+                            memvars["ERROR"] = str(e)
+                        except Exception:
+                            pass
+                tk.Button(frame, text=str(g.get("label")), command=_fire,
+                          font=self.font, bg="#225522", fg="white").pack(side="left", padx=6)
         done = {"ok": False}
 
         def ok(_=None):
@@ -249,7 +320,10 @@ class GuiScreen(HeadlessScreen):
             pass
         for k, sv in vars_.items():
             try:
-                memvars[k] = sv.get()
+                v = sv.get()
+                if kinds.get(k) == "get":
+                    v = HeadlessScreen._apply_picture(v, pics.get(k))
+                memvars[k] = v
             except Exception:
                 pass
         # ghostok frissitese + takaritas

@@ -11,7 +11,8 @@ dBaseIII/Clipper-érzés: procedurális, workarea-alapú, `USE/SKIP/REPLACE`, `@
 
 ## 3. Képernyő
 - `CLEAR [SCREEN]`, `SET COLOR TO "W/B"`.
-- `@ r,c SAY kif [COLOR c]`, `@ r,c GET var [PICTURE p]`, `READ`.
+- `@ r,c SAY kif [COLOR c]`, `@ r,c GET var [PICTURE p]` (`"@!"` = nagybetűsít), `READ`.
+- Widgetek (graphic-env-clipper mintara): `@ r,c CHECKBOX var [PROMPT p]`, `@ r,c RADIO var OPTIONS "a,b,c" [TITLE t]`, `@ r,c BUTTON "felirat" ACTION fuggveny()`. GUI-ban űrlap (Checkbutton/Radiobutton/kattintható Button), headless módban beadott inputokból.
 - `? kif [, ...]`, `MENU "a,b,c" TO v [TITLE t]`, `BROWSE`, `MSGBOX(kif)`, `WAIT`, `ACCEPT [TO v] [PROMPT p]`, `INPUT`.
 
 ## 4. Adatbázis (SQLite)
@@ -20,13 +21,15 @@ dBaseIII/Clipper-érzés: procedurális, workarea-alapú, `USE/SKIP/REPLACE`, `@
 - `USE nev [ALIAS a]` / `USE` (zár), `SELECT n|alias`, `CLOSE [ALL]`.
 - Navigáció: `GO TOP|BOTTOM|n`, `SKIP [n]`, `SEEK kif`, `LOCATE FOR felt` / `CONTINUE`, `EOF() BOF() RECNO() RECCOUNT() DELETED()`.
 - Írás: `APPEND BLANK`, `REPLACE m WITH kif [, ...]`, `mezo = kif` (mezőre ír ha nincs ilyen memvar), `DELETE [FOR f]` / `RECALL` / `PACK` / `ZAP`.
+- Összesítés: `SUM kif TO valto [FOR felt]`, `AVERAGE kif TO valto [FOR felt]`, `COUNT TO valto [FOR felt]`.
+- Rendezés/másolás: `SORT TO ujtab ON mezo [/D] [FOR felt]`, `COPY TO fajl DELIMITED`, `APPEND FROM fajl DELIMITED`.
 - `SET FILTER TO felt`, `SET DELETED ON|OFF`, `INDEX ON mezo TO tag`, `SQL "SELECT..."`, `LIST [FOR f]`.
 
 ## 5. Vezérlés + alprogram
 `IF [cond] ... [ELSEIF cond] ... [ELSE] ... ENDIF`, `DO WHILE cond ... ENDDO`, `FOR v = a TO b [STEP s] ... NEXT`, `DO CASE [CASE cond] ... [OTHERWISE] ... ENDCASE`, `EXIT LOOP`, `FUNCTION nev([args]) ... RETURN [kif]` (a `PROCEDURE` alias), `DO nev([args])`, `TRY ... CATCH ... ENDTRY` (`ERROR` memvarba ír).
 
 ## 6. Beépített függvények
-`UPPER LOWER ALLTRIM LTRIM RTRIM LEN SUBSTR LEFT RIGHT AT STR VAL CHR ASC DATE TIME YEAR MONTH DAY DTOC CTOD IIF EMPTY INT ROUND ABS MIN MAX EOF BOF RECNO RECCOUNT DELETED ALIAS FILE INKEY JSONSTRING JSONPARSE HTTPGET MSGBOX`.
+`UPPER LOWER ALLTRIM LTRIM RTRIM LEN SUBSTR LEFT RIGHT AT STR VAL CHR ASC DATE TIME YEAR MONTH DAY DTOC CTOD IIF EMPTY INT ROUND ABS MIN MAX EOF BOF RECNO RECCOUNT DELETED ALIAS FILE INKEY JSONSTRING JSONPARSE HTTPGET MSGBOX REPLICATE SPACE PADL PADR PADC STUFF RAT TRANSFORM DTOS VALTYPE FCOUNT FIELDNAME DBFNAME`.
 
 ## 7. p-kód + exe
 - `compile` a parse-olt AST-t JSON-ba menti (`{version, code}`).

@@ -251,6 +251,9 @@ def name_or_expr(s):
 
 AT_RE = re.compile(r"^\s*@\s*(.+?)\s+SAY\s+(.+?)(?:\s+COLOR\s+(.+))?\s*$", re.I)
 ATGET_RE = re.compile(r"^\s*@\s*(.+?)\s+GET\s+([A-Za-z_][A-Za-z0-9_]*)?(?:\s+PICTURE\s+(.+?))?(?:\s+COLOR\s+(.+))?\s*$", re.I)
+ATCHK_RE = re.compile(r"^\s*@\s*(.+?)\s+CHECKBOX\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s+PROMPT\s+(.+?))?(?:\s+COLOR\s+(.+))?\s*$", re.I)
+ATRAD_RE = re.compile(r"^\s*@\s*(.+?)\s+RADIO\s+([A-Za-z_][A-Za-z0-9_]*)\s+OPTIONS\s+(.+?)(?:\s+TITLE\s+(.+?))?(?:\s+COLOR\s+(.+))?\s*$", re.I)
+ATBTN_RE = re.compile(r"^\s*@\s*(.+?)\s+BUTTON\s+(.+?)\s+ACTION\s+(.+?)\s*$", re.I)
 
 
 class Program:
@@ -346,6 +349,23 @@ def parse_stmt(p, no, text):
             rc, var, pic, col = m2.group(1), m2.group(2), m2.group(3), m2.group(4)
             r, c = parse_rc(rc)
             return {"t": "get", "line": no, "row": r, "col": c, "var": (var or "").upper(), "picture": pic}
+        m3 = ATCHK_RE.match(u)
+        if m3:
+            rc, var, pr, col = m3.group(1), m3.group(2), m3.group(3), m3.group(4)
+            r, c = parse_rc(rc)
+            return {"t": "checkbox", "line": no, "row": r, "col": c, "var": (var or "").upper(),
+                    "prompt": ex(pr) if pr else None, "color": col}
+        m4 = ATRAD_RE.match(u)
+        if m4:
+            rc, var, opt, title, col = m4.group(1), m4.group(2), m4.group(3), m4.group(4), m4.group(5)
+            r, c = parse_rc(rc)
+            return {"t": "radio", "line": no, "row": r, "col": c, "var": (var or "").upper(),
+                    "options": ex(opt), "title": ex(title) if title else None, "color": col}
+        m5 = ATBTN_RE.match(u)
+        if m5:
+            rc, lab, act = m5.group(1), m5.group(2), m5.group(3)
+            r, c = parse_rc(rc)
+            return {"t": "button", "line": no, "row": r, "col": c, "label": ex(lab), "action": ex(act)}
         raise ValueError(f"{no}. sor: hibas @ utasitas: {u}")
 
     w = uu.split()
@@ -530,6 +550,31 @@ def parse_stmt(p, no, text):
         return {"t": "locate", "line": no, "cond": ex(u[11:].strip())}
     if uu.startswith("CONTINUE"):
         return {"t": "continue_find", "line": no}
+    m = re.match(r"^(SUM|AVERAGE)\s+(.+?)\s+TO\s+(.+?)(\s+FOR\s+(.+))?\s*$", u, re.I | re.S)
+    if m:
+        return {"t": "sumavg", "line": no, "op": m.group(1).upper(),
+                "exprs": [ex(a) for a in split_top(m.group(2), ",") if a.strip()],
+                "targets": [t.strip().upper() for t in split_top(m.group(3), ",") if t.strip()],
+                "cond": ex(m.group(5)) if m.group(5) else None}
+    m = re.match(r"^COUNT\s+TO\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s+FOR\s+(.+))?\s*$", u, re.I | re.S)
+    if m:
+        return {"t": "count", "line": no, "var": m.group(1).upper(),
+                "cond": ex(m.group(2)) if m.group(2) else None}
+    m = re.match(r"^SORT\s+TO\s+(.+?)\s+ON\s+(.+?)(\s+FOR\s+(.+))?\s*$", u, re.I | re.S)
+    if m:
+        keyspec = m.group(2).strip()
+        desc = bool(re.search(r"/D\s*$", keyspec, re.I))
+        keyspec = re.sub(r"/[AD]\s*$", "", keyspec, flags=re.I).strip()
+        return {"t": "sort", "line": no, "table": name_or_expr(m.group(1).strip()),
+                "key": ex(keyspec), "desc": desc, "cond": ex(m.group(4)) if m.group(4) else None}
+    m = re.match(r"^COPY\s+TO\s+(.+?)(\s+DELIMITED)?(\s+FIELDS\s+(.+))?\s*$", u, re.I | re.S)
+    if m:
+        return {"t": "copyto", "line": no, "file": name_or_expr(m.group(1).strip()),
+                "delimited": bool(m.group(2)), "fields": m.group(4)}
+    m = re.match(r"^APPEND\s+FROM\s+(.+?)(\s+DELIMITED)?\s*$", u, re.I | re.S)
+    if m:
+        return {"t": "appendfrom", "line": no, "file": name_or_expr(m.group(1).strip()),
+                "delimited": bool(m.group(2))}
     if uu.startswith("DELETE"):
         m = re.match(r"DELETE(?:\s+FOR\s+(.+))?$", u, re.I)
         return {"t": "delete", "line": no, "cond": ex(m.group(1)) if m.group(1) else None}

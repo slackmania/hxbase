@@ -107,8 +107,22 @@ class VM:
             self.qmark_row = max(self.qmark_row, int(to_num(r)) + 1)
         elif t == "get":
             self.screen.get(int(to_num(self.ev(s["row"]))), int(to_num(self.ev(s["col"]))), s["var"], s.get("picture"))
+        elif t == "checkbox":
+            pr = to_str(self.ev(s["prompt"])) if s.get("prompt") else s["var"]
+            self.screen.checkbox(int(to_num(self.ev(s["row"]))), int(to_num(self.ev(s["col"]))), s["var"], pr)
+        elif t == "radio":
+            opts_v = self.ev(s["options"])
+            if isinstance(opts_v, (list, tuple)):
+                opts = [to_str(x) for x in opts_v]
+            else:
+                opts = [x.strip() for x in to_str(opts_v).split(",") if x.strip()]
+            title = to_str(self.ev(s["title"])) if isinstance(s.get("title"), dict) else str(s.get("title") or "")
+            self.screen.radio(int(to_num(self.ev(s["row"]))), int(to_num(self.ev(s["col"]))), s["var"], opts, title)
+        elif t == "button":
+            self.screen.button(int(to_num(self.ev(s["row"]))), int(to_num(self.ev(s["col"]))),
+                               to_str(self.ev(s["label"])), s["action"])
         elif t == "read":
-            self.screen.read(self.mem)
+            self.screen.read(self.mem, self._button_action)
         elif t == "qmark":
             vals = [to_str(self.ev(a)) for a in s.get("args", [])]
             line = (" " if vals else "") + " ".join(vals)
@@ -244,6 +258,16 @@ class VM:
             self.do_locate(s["cond"])
         elif t == "continue_find":
             self.do_continue()
+        elif t == "sumavg":
+            self.do_sumavg(s["op"], s["exprs"], s["targets"], s.get("cond"))
+        elif t == "count":
+            self.do_count(s["var"], s.get("cond"))
+        elif t == "sort":
+            self.do_sort(s["table"], s["key"], s.get("desc"), s.get("cond"))
+        elif t == "copyto":
+            self.do_copyto(s["file"], s.get("delimited"), s.get("fields"))
+        elif t == "appendfrom":
+            self.do_appendfrom(s["file"], s.get("delimited"))
         elif t == "delete":
             self.do_delete(s.get("cond"))
         elif t == "recall":
@@ -417,6 +441,117 @@ class VM:
                 return
         area.pos = len(area.order)
         area.eof = True
+
+    def _button_action(self, action_node):
+        """BUTTON ACTION hivasa (GUI kattintasbol)."""
+        if isinstance(action_node, dict) and action_node.get("t") == "call":
+            self.call_func(action_node["name"], [self.ev(x) for x in action_node.get("args", [])])
+        elif action_node is not None:
+            self.ev(action_node)
+
+    def _iter_visible(self, area, cond):
+        for _, row in area.order:
+            if not self.row_visible(area, row):
+                continue
+            if cond is not None and not is_true(self.with_row(area, row, lambda: self.ev(cond))):
+                continue
+            yield row
+
+    def do_sumavg(self, op, exprs, targets, cond):
+        self.need_table()
+        area = self.db.cur()
+        area.refresh()
+        sums = [0.0] * len(exprs)
+        n = 0
+        for row in self._iter_visible(area, cond):
+            n += 1
+            for i, e in enumerate(exprs):
+                if i < len(sums):
+                    sums[i] += to_num(self.with_row(area, row, lambda: self.ev(e)))
+        for i, tgt in enumerate(targets):
+            v = sums[i] if i < len(sums) else 0.0
+            if op == "AVERAGE" and n:
+                v = v / n
+            self.mem[tgt] = v
+        if len(targets) < len(sums):
+            for i in range(len(targets), len(sums)):
+                v = sums[i] / n if (op == "AVERAGE" and n) else sums[i]
+                self.screen.list_out(f"{op}({i + 1}) = {to_str(v)}")
+
+    def do_count(self, var, cond):
+        self.need_table()
+        area = self.db.cur()
+        area.refresh()
+        self.mem[var] = sum(1 for _ in self._iter_visible(area, cond))
+
+    def do_sort(self, table_node, key, desc, cond):
+        self.need_table()
+        area = self.db.cur()
+        area.refresh()
+        tbl = self.eval_table_name(table_node)
+        keyed = []
+        for row in self._iter_visible(area, cond):
+            keyed.append((self.with_row(area, row, lambda: self.ev(key)), row))
+        try:
+            keyed.sort(key=lambda p: (p[0] is None, p[0]), reverse=bool(desc))
+        except TypeError:
+            keyed.sort(key=lambda p: to_str(p[0]), reverse=bool(desc))
+        defs = [(f[0], f[1], f[2], f[3]) for f in area.fields]
+        self.db.create_table(tbl, defs)
+        import sqlite3 as _sq
+        db_path = self.db._resolve(tbl)
+        conn = _sq.connect(db_path)
+        cols = area.column_names()
+        for _, row in keyed:
+            vals = [row.get(c) for c in cols]
+            conn.execute(f'INSERT INTO "{tbl}" ({", ".join(chr(34) + c + chr(34) for c in cols)}) VALUES ({", ".join("?" * len(cols))})', vals)
+        conn.commit()
+        conn.close()
+        self.screen.list_out(f"SORT: {len(keyed)} sor -> {tbl}")
+
+    def do_copyto(self, file_node, delimited, fields_raw):
+        import csv
+        self.need_table()
+        area = self.db.cur()
+        area.refresh()
+        fname = to_str(self.ev(file_node)) if isinstance(file_node, dict) else str(file_node)
+        if delimited and "." not in fname.split("/")[-1].split("\\")[-1]:
+            fname += ".csv"
+        import os
+        if not os.path.isabs(fname):
+            fname = os.path.join(self.base_dir, fname)
+        cols = area.column_names()
+        with open(fname, "w", encoding="utf-8", newline="") as f:
+            w = csv.writer(f)
+            w.writerow(cols)
+            for row in self._iter_visible(area, None):
+                w.writerow([row.get(c) if row.get(c) is not None else "" for c in cols])
+        self.screen.list_out(f"COPY TO {fname}")
+
+    def do_appendfrom(self, file_node, delimited):
+        import csv
+        import os
+        self.need_table()
+        area = self.db.cur()
+        fname = to_str(self.ev(file_node)) if isinstance(file_node, dict) else str(file_node)
+        if not os.path.isabs(fname):
+            cand = os.path.join(self.base_dir, fname)
+            if os.path.exists(cand):
+                fname = cand
+        cols = area.column_names()
+        n = 0
+        with open(fname, encoding="utf-8", newline="") as f:
+            for rec in csv.DictReader(f):
+                area.append_blank()
+                for c in cols:
+                    if c in rec and rec[c] != "":
+                        try:
+                            area.replace(c, rec[c])
+                        except Exception:
+                            pass
+                n += 1
+        area.refresh()
+        self.screen.list_out(f"APPEND FROM {fname}: {n} sor")
 
     def do_delete(self, cond):
         self.need_table()
@@ -749,6 +884,72 @@ class VM:
         if name in ("FILE",):
             import os
             return os.path.exists(to_str(a[0] if a else ""))
+        if name in ("REPLICATE",):
+            s = to_str(a[0] if a else "")
+            return s * max(0, int(to_num(a[1]) if len(a) > 1 else 0))
+        if name in ("SPACE",):
+            return " " * max(0, int(to_num(a[0]) if a else 0))
+        if name in ("PADL", "PADR", "PADC"):
+            s = to_str(a[0] if a else "")
+            ln = int(to_num(a[1]) if len(a) > 1 else 0)
+            pad = to_str(a[2])[:1] if len(a) > 2 and to_str(a[2]) else " "
+            if len(s) >= ln:
+                return s[:ln]
+            if name == "PADL":
+                return s.rjust(ln, pad)
+            if name == "PADR":
+                return s.ljust(ln, pad)
+            return s.center(ln, pad)
+        if name in ("STUFF",):
+            s = to_str(a[0] if a else "")
+            start = max(1, int(to_num(a[1]) if len(a) > 1 else 1)) - 1
+            ndel = max(0, int(to_num(a[2]) if len(a) > 2 else 0))
+            ins = to_str(a[3]) if len(a) > 3 else ""
+            return s[:start] + ins + s[start + ndel:]
+        if name in ("RAT",):
+            sub = to_str(a[0] if a else "").upper()
+            s = to_str(a[1] if len(a) > 1 else "").upper()
+            return s.rfind(sub) + 1
+        if name in ("TRANSFORM",):
+            v = a[0] if a else ""
+            pic = to_str(a[1]).upper() if len(a) > 1 else ""
+            if "B" in pic and to_num(v) == 0:
+                return ""
+            if isinstance(v, bool) or not isinstance(v, (int, float)):
+                return to_str(v)
+            dec = 0
+            if "." in pic:
+                dec = sum(1 for ch in pic.split(".", 1)[1] if ch in "90#")
+            s = f"{float(v):,.{dec}f}"
+            if "$" in pic:
+                s = "$" + s
+            return s
+        if name in ("DTOS",):
+            return to_str(a[0] if a else "").replace("-", "")[:8]
+        if name in ("VALTYPE", "TYPE"):
+            v = a[0] if a else None
+            if v is None:
+                return "U"
+            if isinstance(v, bool):
+                return "L"
+            if isinstance(v, (int, float)):
+                return "N"
+            if isinstance(v, str):
+                return "C"
+            if isinstance(v, (list, tuple)):
+                return "A"
+            return "H"
+        if name in ("FCOUNT",):
+            cur = self.db.cur()
+            return len(cur.column_names()) if cur else 0
+        if name in ("FIELDNAME", "FIELD"):
+            cur = self.db.cur()
+            cols = cur.column_names() if cur else []
+            i = int(to_num(a[0] if a else 0)) - 1
+            return cols[i] if 0 <= i < len(cols) else ""
+        if name in ("DBFNAME", "DBF", "ALIASNAME"):
+            cur = self.db.cur()
+            return (cur.db_path if cur else "")
         if name in ("INKEY", "LASTKEY"):
             return 0
         raise RuntimeError(f"Ismeretlen fuggveny: {name}")
