@@ -656,21 +656,12 @@ class VM:
             self.screen.list_out("SQL OK")
 
     def ask_text(self, prompt, default):
-        if prompt:
-            self.screen.list_out(prompt)
         # headless teszt-input
         if hasattr(self.screen, "inputs") and self.screen.inputs:
+            if prompt:
+                self.screen.list_out(prompt)
             return next(iter(self.screen.inputs.values()))
-        try:
-            if type(self.screen).__name__ == "GuiScreen":
-                from tkinter import simpledialog
-                try:
-                    return simpledialog.askstring("HxBase", prompt or "Add meg:", initialvalue=str(default)) or ""
-                except Exception:
-                    return ""
-            return input((prompt or "Add meg: ") + " ")
-        except EOFError:
-            return ""
+        return self.screen.prompt_user(prompt or "Add meg:")
 
     def call_func(self, name, args):
         name = name.upper()

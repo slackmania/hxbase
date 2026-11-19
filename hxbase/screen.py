@@ -193,19 +193,33 @@ class HeadlessScreen:
             r = saved["r1"] + i
             self.colors[r][saved["c1"]:saved["c1"] + len(row)] = row
 
+    def _put(self, r, c, text, fg="black", bg="white"):
+        for i, ch in enumerate(str(text)):
+            if 0 <= r < self.rows and 0 <= c + i < self.cols:
+                self.buf[r][c + i] = ch
+                self.colors[r][c + i] = (fg, bg)
+
+    def prompt_user(self, text):
+        if text:
+            self.list_out(text)
+        try:
+            return input((text or "Add meg: ") + " ")
+        except EOFError:
+            return ""
+
     def draw_box(self, r1, c1, r2, c2, title=""):
         r1 = max(0, r1); c1 = max(0, c1)
         r2 = min(self.rows - 1, r2); c2 = min(self.cols - 1, c2)
         w = c2 - c1 + 1
-        top = "┌" + "─" * (w - 2) + "┐"
-        bot = "└" + "─" * (w - 2) + "┘"
+        top = "+" + "-" * (w - 2) + "+"
+        bot = "+" + "-" * (w - 2) + "+"
         for i, ch in enumerate(top):
             self.buf[r1][c1 + i] = ch
         for i, ch in enumerate(bot):
             self.buf[r2][c1 + i] = ch
         for r in range(r1 + 1, r2):
-            self.buf[r][c1] = "│"
-            self.buf[r][c2] = "│"
+            self.buf[r][c1] = "|"
+            self.buf[r][c2] = "|"
             for cc in range(c1 + 1, c2):
                 self.buf[r][cc] = " "
         if title:
@@ -223,377 +237,224 @@ class HeadlessScreen:
         pass
 
 
-class GuiScreen(HeadlessScreen):
-    """Tkinter ablak: sotet konzol-ablak monospace betuvel, DOS-os ablak-emulacioval."""
+class ConsoleScreen(HeadlessScreen):
+    """Valodi szoveges konzol: 80x25-os racs ANSI-val a terminalra. Semmi GUI."""
+
+    _FG = {"black": 30, "red": 31, "green": 32, "yellow": 33, "blue": 34,
+           "white": 37, "gray": 90, "grey": 90}
+    _BG = {"black": 40, "red": 41, "green": 42, "yellow": 43, "blue": 44,
+           "white": 47, "gray": 100, "grey": 100}
 
     def __init__(self, rows=ROW_COUNT, cols=COL_COUNT):
         super().__init__(rows, cols)
-        import tkinter as tk
-        from tkinter import font as tkfont
-        self._tk = tk
-        self.root = tk.Tk()
-        self.root.title("HxBase — kvázi-grafikus konzol")
-        self.root.configure(bg="black")
-        self.font = tkfont.Font(family="Consolas", size=11)
-        if "Consolas" not in self.font.actual("family"):
-            self.font = tkfont.Font(family="Courier New", size=11)
-        self.text = tk.Text(
-            self.root, width=cols, height=rows, bg="black", fg="white",
-            font=self.font, insertbackground="white", wrap="none",
-        )
-        self.text.pack(fill="both", expand=True)
-        self.text.tag_config("def", foreground="white", background="black")
-        self._entries = []
-        self._closed = False
-        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
-
-    def _on_close(self):
-        self._closed = True
         try:
-            self.root.destroy()
+            import os as _os
+            _os.system("")  # VT-mod bekapcsolasa Windows konzolon
         except Exception:
             pass
+        self._need_clear = True
 
-    def _refresh(self):
-        self.text.delete("1.0", "end")
+    @classmethod
+    def _ansi(cls, fg, bg):
+        return "\x1b[%d;%dm" % (cls._FG.get(str(fg).lower(), 37),
+                               cls._BG.get(str(bg).lower(), 40))
+
+    def _render(self):
+        import sys as _sys
+        out = []
+        if self._need_clear:
+            out.append("\x1b[2J")
+            self._need_clear = False
+        out.append("\x1b[H")
         for r in range(self.rows):
-            line = "".join(self.buf[r])
-            self.text.insert("end", line + ("\n" if r < self.rows - 1 else ""))
-        self.root.update_idletasks()
+            cur = None
+            for c in range(self.cols):
+                fb = self.colors[r][c]
+                if fb != cur:
+                    out.append(self._ansi(*fb))
+                    cur = fb
+                out.append(self.buf[r][c])
+            out.append("\x1b[0m")
+            if r < self.rows - 1:
+                out.append("\n")
+        _sys.stdout.write("".join(out))
+        _sys.stdout.flush()
 
     def clear(self):
         super().clear()
-        for e in self._entries:
-            try:
-                e.destroy()
-            except Exception:
-                pass
-        self._entries = []
-        if not self._closed:
-            self._refresh()
+        self._need_clear = True
+        self._render()
 
     def say(self, row, col, text, color=None):
         super().say(row, col, text, color)
-        if not self._closed:
-            self._refresh()
+        self._render()
 
-    def _cell_xy(self, row, col):
-        fw = self.font.measure("M")
-        fh = self.font.metrics("linespace")
-        return col * fw + 4, row * fh + 2
-
-    def _put(self, r, c, text, fg="black", bg="white"):
-        for i, ch in enumerate(str(text)):
-            if 0 <= r < self.rows and 0 <= c + i < self.cols:
-                self.buf[r][c + i] = ch
-                self.colors[r][c + i] = (fg, bg)
+    def _dialog_geom(self, lines):
+        w = min(max([len(t) for t in lines] + [20]) + 6, self.cols - 4)
+        h = len(lines) + 5
+        r1 = max(0, (self.rows - h) // 2)
+        c1 = max(0, (self.cols - w) // 2)
+        return r1, c1, r1 + h - 1, c1 + w - 1, w
 
     def read(self, memvars, action_fn=None):
-        # DOS-emulacio: hattermentes -> keretes dialog a racsra -> OK/Esc-re visszaallitas.
+        # DOS-mod: hattermentes -> keretes dialog a racsra -> adatbekeres -> visszaallitas.
         entries = self.pending_gets
         self.pending_gets = []
         if not entries:
             return
-        if self._closed:
-            for g in entries:
-                kind = g.get("kind", "get")
-                if kind == "get":
-                    v = self.inputs.get(g["var"].upper(), memvars.get(g["var"].upper(), ""))
-                    memvars[g["var"].upper()] = HeadlessScreen._apply_picture(v, g.get("picture"))
-                elif kind == "checkbox":
-                    raw = self.inputs.get(g["var"].upper(), memvars.get(g["var"].upper(), False))
-                    memvars[g["var"].upper()] = raw if isinstance(raw, bool) else (str(raw).strip().upper() in (".T.", "T", "Y", "1", "IGEN", "I", "TRUE"))
-                elif kind == "radio":
-                    memvars[g["var"].upper()] = memvars.get(g["var"].upper(), 1)
-            return
-        import tkinter as tk
-
         focus = [g for g in entries if g.get("kind", "get") in ("get", "checkbox", "radio", "button")]
-        edits = {}
-        for g in focus:
-            kind = g.get("kind", "get")
-            var = g.get("var")
-            if kind == "get":
-                edits[var] = str(memvars.get(var.upper(), ""))
-            elif kind == "checkbox":
-                edits[var] = bool(memvars.get(var.upper(), False))
-            elif kind == "radio":
-                try:
-                    ch = int(memvars.get(var.upper(), 1) or 1)
-                except Exception:
-                    ch = 1
-                opts = g.get("options") or []
-                edits[var] = max(1, min(ch, len(opts) or 1))
 
         def content(g):
             kind = g.get("kind", "get")
             if kind == "get":
-                t = edits[g["var"]][:18]
-                return "%s: [%s]" % (g["var"], t.ljust(18))
+                return "%s: [%s]" % (g["var"], str(memvars.get(g["var"].upper(), ""))[:18])
             if kind == "checkbox":
-                return "[%s] %s" % ("X" if edits[g["var"]] else " ", g.get("prompt") or g["var"])
+                return "[%s] %s" % ("X" if memvars.get(g["var"].upper(), False) else " ",
+                                    g.get("prompt") or g["var"])
             if kind == "radio":
                 opts = g.get("options") or []
-                cur = opts[edits[g["var"]] - 1] if opts else "?"
-                t = str(g.get("title") or g["var"])
-                return "%s: < %s >" % (t, cur)
+                try:
+                    ch = int(memvars.get(g["var"].upper(), 1) or 1)
+                except Exception:
+                    ch = 1
+                cur = opts[ch - 1] if 1 <= ch <= len(opts) else "?"
+                return "%s: < %s >" % (g.get("title") or g["var"], cur)
             return "[ %s ]" % g.get("label")
 
         texts = [content(g) for g in focus]
-        w = min(max([len(t) for t in texts] + [20]) + 6, self.cols - 4)
-        h = len(focus) + 5
-        r1 = max(0, (self.rows - h) // 2)
-        c1 = max(0, (self.cols - w) // 2)
-        r2, c2 = r1 + h - 1, c1 + w - 1
+        r1, c1, r2, c2, w = self._dialog_geom(texts)
         saved = self.save_region(r1, c1, r2, c2)
         self.draw_box(r1, c1, r2, c2, "Adatbevitel")
-        hint = "Tab: tovabb  Enter: OK  Esc: megse"
+        for i, t in enumerate(texts):
+            self._put(r1 + 2 + i, c1 + 2, t[:w - 4].ljust(w - 4), "white", "black")
+        hint = "ures sor = marad"
         self._put(r2 - 1, c1 + max(1, (w - len(hint)) // 2), hint[:w - 2], "black", "white")
-        cur = {"i": 0}
-        done = {"ok": False}
-
-        def render():
-            for i, g in enumerate(focus):
-                t = content(g)[:w - 4].ljust(w - 4)
-                if i == cur["i"]:
-                    self._put(r1 + 2 + i, c1 + 2, t, "black", "white")
-                else:
-                    self._put(r1 + 2 + i, c1 + 2, t, "white", "black")
-            self._put(r1 + 2 + len(focus), c1 + 2, " " * (w - 4), "white", "black")
-            self._refresh()
-
-        sig = tk.BooleanVar(value=False)
-
-        def finish(save):
-            if save:
-                for g in focus:
-                    kind = g.get("kind", "get")
-                    var = g.get("var")
-                    if kind == "get":
-                        memvars[var.upper()] = HeadlessScreen._apply_picture(edits[var], g.get("picture"))
-                    elif kind in ("checkbox", "radio"):
-                        memvars[var.upper()] = edits[var]
-            done["ok"] = True
-            try:
-                sig.set(True)
-            except Exception:
-                pass
-
-        def on_key(ev):
-            ks = ev.keysym
-            n = len(focus)
-            g = focus[cur["i"]]
+        self._render()
+        for g in focus:
             kind = g.get("kind", "get")
-            if ks == "Tab":
-                cur["i"] = (cur["i"] + 1) % n
-            elif ks == "Up":
-                cur["i"] = (cur["i"] - 1) % n
-            elif ks == "Down":
-                cur["i"] = (cur["i"] + 1) % n
-            elif ks == "Escape":
-                finish(False)
-            elif ks == "Return":
-                if kind == "button":
+            var = g.get("var")
+            if kind == "get":
+                cur = str(memvars.get(var.upper(), ""))
+                try:
+                    ans = input("%s [%s]: " % (var, cur))
+                except EOFError:
+                    ans = ""
+                memvars[var.upper()] = HeadlessScreen._apply_picture(ans, g.get("picture")) if ans != "" else cur
+            elif kind == "checkbox":
+                cur = bool(memvars.get(var.upper(), False))
+                try:
+                    ans = input("%s (I/N) [%s]: " % (g.get("prompt") or var, "I" if cur else "N"))
+                except EOFError:
+                    ans = ""
+                if ans.strip() == "":
+                    memvars[var.upper()] = cur
+                else:
+                    memvars[var.upper()] = ans.strip().upper() in ("I", "IGEN", "Y", "1", ".T.", "T")
+            elif kind == "radio":
+                opts = g.get("options") or []
+                for i, o in enumerate(opts, 1):
+                    print("  %d. %s" % (i, o))
+                try:
+                    cur = memvars.get(var.upper(), 1)
+                    ans = input("%s [1-%d, most: %s]: " % (g.get("title") or var, len(opts), cur))
+                except EOFError:
+                    ans = ""
+                if ans.strip().isdigit() and 1 <= int(ans.strip()) <= len(opts):
+                    memvars[var.upper()] = int(ans.strip())
+                else:
+                    memvars[var.upper()] = cur
+            elif kind == "button":
+                try:
+                    ans = input("[ %s ] futtat? (I/N) [N]: " % g.get("label"))
+                except EOFError:
+                    ans = ""
+                if ans.strip().upper() in ("I", "IGEN", "Y", "1") and action_fn is not None:
                     try:
-                        if action_fn is not None:
-                            action_fn(g.get("action"))
+                        action_fn(g.get("action"))
                     except Exception as e:
                         memvars["ERROR"] = str(e)
-                else:
-                    if kind == "checkbox":
-                        edits[g["var"]] = not edits[g["var"]]
-                    elif kind == "radio":
-                        opts = g.get("options") or []
-                        edits[g["var"]] = edits[g["var"]] % (len(opts) or 1) + 1
-                    elif cur["i"] == n - 1:
-                        finish(True)
-                    else:
-                        cur["i"] += 1
-            elif ks == "space":
-                if kind == "checkbox":
-                    edits[g["var"]] = not edits[g["var"]]
-                elif kind == "radio":
-                    opts = g.get("options") or []
-                    edits[g["var"]] = edits[g["var"]] % (len(opts) or 1) + 1
-                elif kind == "get":
-                    edits[g["var"]] = (edits[g["var"]] + " ")[:18]
-            elif ks == "BackSpace":
-                if kind == "get":
-                    edits[g["var"]] = edits[g["var"]][:-1]
-            elif ks == "Left":
-                if kind == "radio":
-                    opts = g.get("options") or []
-                    edits[g["var"]] = (edits[g["var"]] - 2) % (len(opts) or 1) + 1
-                else:
-                    cur["i"] = (cur["i"] - 1) % n
-            elif ks == "Right":
-                if kind == "radio":
-                    opts = g.get("options") or []
-                    edits[g["var"]] = edits[g["var"]] % (len(opts) or 1) + 1
-                else:
-                    cur["i"] = (cur["i"] + 1) % n
-            else:
-                ch = ev.char
-                if kind == "get" and ch and ch.isprintable():
-                    edits[g["var"]] = (edits[g["var"]] + ch)[:18]
-                elif kind == "get":
-                    pass
-                elif ch and ch.isdigit() and kind == "radio":
-                    opts = g.get("options") or []
-                    d = int(ch)
-                    if 1 <= d <= len(opts):
-                        edits[g["var"]] = d
-                    else:
-                        pass
-                else:
-                    return None
-            render()
-            return "break"
-
-        h1 = self.text.bind("<Key>", on_key)
-        try:
-            self.text.bind("<Tab>", lambda e: "break")
-        except Exception:
-            pass
-        try:
-            self.text.focus_set()
-        except Exception:
-            pass
-        render()
-        try:
-            self.root.wait_variable(sig)
-        except Exception:
-            pass
-        try:
-            self.text.unbind("<Key>", h1)
-        except Exception:
-            pass
         self.restore_region(saved)
-        self._refresh()
+        self._render()
 
     def message(self, text, title=""):
         super().message(text, title)
-        if self._closed:
-            return
-        import tkinter as tk
         lines = str(text).splitlines() or [""]
-        w = min(max([len(str(title or ""))] + [len(l) for l in lines]) + 6, 24, self.cols - 4)
-        h = len(lines) + 5
-        r1 = max(0, (self.rows - h) // 2)
-        c1 = max(0, (self.cols - w) // 2)
-        saved = self.save_region(r1, c1, r1 + h - 1, c1 + w - 1)
-        self.draw_box(r1, c1, r1 + h - 1, c1 + w - 1, str(title or "HxBase"))
+        r1, c1, r2, c2, w = self._dialog_geom(lines + [str(title or "")])
+        saved = self.save_region(r1, c1, r2, c2)
+        self.draw_box(r1, c1, r2, c2, str(title or "HxBase"))
         for i, ln in enumerate(lines):
             self._put(r1 + 2 + i, c1 + 3, ln[:w - 6], "white", "black")
-        ok = "[ OK ]"
-        self._put(r1 + h - 2, c1 + (w - len(ok)) // 2, ok, "black", "white")
-        self._refresh()
-        sig = tk.BooleanVar(value=False)
-        h1 = self.text.bind("<Key>", lambda e: (sig.set(True), "break")[1])
+        ok = "[ OK - Enter ]"
+        self._put(r1 + 2 + len(lines), c1 + 2, ok.ljust(w - 4), "black", "white")
+        self._render()
         try:
-            self.text.focus_set()
-        except Exception:
-            pass
-        try:
-            self.root.wait_variable(sig)
-        except Exception:
-            pass
-        try:
-            self.text.unbind("<Key>", h1)
-        except Exception:
+            input()
+        except EOFError:
             pass
         self.restore_region(saved)
-        self._refresh()
+        self._render()
 
     def menu(self, title, options):
-        # DOS-emulacio: lenyilo ablak a racsra, hattermentessel.
+        # Lenyilo ablak a racsra, hattermentessel. Sorszam beirasa valaszt.
         self.menus.append((title, options))
-        if self._closed or not options:
-            return 1 if options else 0
-        import tkinter as tk
+        if not options:
+            return 0
         opts = [str(o) for o in options]
-        w = min(max([len(str(title or ""))] + [len(o) for o in opts]) + 6, self.cols - 4)
-        h = len(opts) + 5
-        r1 = max(0, (self.rows - h) // 2)
-        c1 = max(0, (self.cols - w) // 2)
-        saved = self.save_region(r1, c1, r1 + h - 1, c1 + w - 1)
-        self.draw_box(r1, c1, r1 + h - 1, c1 + w - 1, str(title or "Menü"))
-        sel = {"i": 0}
-
-        def render():
-            for i, o in enumerate(opts):
-                t = ("► " + o)[:w - 4].ljust(w - 4)
-                if i == sel["i"]:
-                    self._put(r1 + 2 + i, c1 + 2, t, "black", "white")
-                else:
-                    self._put(r1 + 2 + i, c1 + 2, t, "white", "black")
-            self._refresh()
-
-        sig = tk.BooleanVar(value=False)
-
-        def on_key(ev):
-            ks = ev.keysym
-            if ks == "Up":
-                sel["i"] = (sel["i"] - 1) % len(opts)
-            elif ks == "Down":
-                sel["i"] = (sel["i"] + 1) % len(opts)
-            elif ks in ("Return", "space"):
-                try:
-                    sig.set(True)
-                except Exception:
-                    pass
-                return "break"
-            elif ks == "Escape":
-                sel["i"] = -1
-                try:
-                    sig.set(True)
-                except Exception:
-                    pass
-                return "break"
-            render()
-            return "break"
-
-        h1 = self.text.bind("<Key>", on_key)
-        try:
-            self.text.focus_set()
-        except Exception:
-            pass
-        render()
-        try:
-            self.root.wait_variable(sig)
-        except Exception:
-            pass
-        try:
-            self.text.unbind("<Key>", h1)
-        except Exception:
-            pass
+        numbered = ["%d. %s" % (i + 1, o) for i, o in enumerate(opts)]
+        r1, c1, r2, c2, w = self._dialog_geom(numbered + [str(title or "")])
+        saved = self.save_region(r1, c1, r2, c2)
+        self.draw_box(r1, c1, r2, c2, str(title or "Menu"))
+        for i, t in enumerate(numbered):
+            self._put(r1 + 2 + i, c1 + 2, t[:w - 4].ljust(w - 4), "white", "black")
+        self._render()
+        while True:
+            try:
+                ans = input("Valasz [1-%d, ures = 1]: " % len(opts))
+            except EOFError:
+                ans = ""
+            if ans.strip() == "":
+                ch = 1
+                break
+            if ans.strip().isdigit() and 1 <= int(ans.strip()) <= len(opts):
+                ch = int(ans.strip())
+                break
+            print("1 es %d kozotti szamot adj meg." % len(opts))
         self.restore_region(saved)
-        self._refresh()
-        return sel["i"] + 1 if sel["i"] >= 0 else 0
+        self._render()
+        return ch
+
+    def wait(self, msg=""):
+        super().wait(msg)
+        if msg:
+            print(msg)
+        try:
+            input("...Enter...")
+        except EOFError:
+            pass
 
     def browse(self, alias, columns, rows, widths=None):
+        # Csak szoveg: igazitott tablazat, laponkent szunettel.
         super().browse(alias, columns, rows, widths)
-        if self._closed:
-            return
-        import tkinter as tk
-        win = tk.Toplevel(self.root)
-        win.title(f"BROWSE — {alias}")
-        txt = tk.Text(win, width=min(120, 10 + sum(min((widths[i] if widths and i < len(widths) else 10), 30) + 2 for i in range(len(columns)))),
-                      height=min(24, max(5, len(rows) + 4)), font=self.font)
-        txt.pack(fill="both", expand=True)
-        for line in format_table(columns, rows[:500], widths):
-            txt.insert("end", line + "\n")
-        tk.Button(win, text="Bezár", command=win.destroy).pack(pady=4)
+        import sys as _sys
+        lines = format_table(columns, rows, widths)
+        tty = _sys.stdin.isatty()
+        for i, ln in enumerate(lines):
+            print(ln)
+            if tty and (i + 1) % 20 == 0 and i + 1 < len(lines):
+                try:
+                    more = input("-- tovabb (Enter), vege (Q): ")
+                except EOFError:
+                    break
+                if more.strip().upper() == "Q":
+                    break
 
-    def list_out(self, text):
-        super().list_out(text)
-        if not self._closed:
-            # also lecteti a grid aljara? egyszeruen statuszba irjuk
-            pass
-
-    def mainloop(self):
-        if not self._closed:
-            self.root.mainloop()
+    def prompt_user(self, text):
+        if text:
+            print(text)
+        try:
+            return input("> ")
+        except EOFError:
+            return ""
 
     def close(self):
-        pass
+        self._render()

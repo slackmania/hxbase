@@ -131,7 +131,7 @@ def test_box_save_restore():
     sc.say(10, 10, "HATTER")
     saved = sc.save_region(9, 9, 12, 20)
     sc.draw_box(9, 9, 12, 20, "Ablak")
-    assert sc.buf[9][9] == "┌" and sc.buf[12][20] == "┘"
+    assert sc.buf[9][9] == "+" and sc.buf[12][20] == "+" and sc.buf[10][9] == "|"
     sc.restore_region(saved)
     assert sc.text_row(10) == " " * 10 + "HATTER"
 

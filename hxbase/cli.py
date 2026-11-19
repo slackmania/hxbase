@@ -10,19 +10,14 @@ import sys
 
 from .compiler import compile_file, compile_source, save_pcode, load_pcode
 from .db import DBManager
-from .screen import HeadlessScreen
+from .screen import ConsoleScreen, HeadlessScreen
 from .vm import VM
 
 
 def make_screen(headless):
     if headless:
         return HeadlessScreen()
-    try:
-        from .screen import GuiScreen
-        return GuiScreen()
-    except Exception as e:
-        print(f"[hxbase] GUI nem erheto ({e}), headless mod.", file=sys.stderr)
-        return HeadlessScreen()
+    return ConsoleScreen()
 
 
 def cmd_run(args):
@@ -43,8 +38,8 @@ def cmd_run(args):
             dbm.close_all()
         except Exception:
             pass
-    # headless dump, hogy latszodjon a kepernyo tartalma
-    if isinstance(screen, HeadlessScreen) and type(screen).__name__ == "HeadlessScreen":
+    # headless dump, hogy latszodjon a kepernyo tartalma; konzolra eloben rajzolunk
+    if type(screen) is HeadlessScreen:
         dump = screen.dump()
         if dump.strip():
             print("---- kepernyo ----")
@@ -55,7 +50,7 @@ def cmd_run(args):
             print(line)
     else:
         try:
-            screen.mainloop()
+            screen.close()
         except Exception:
             pass
 
@@ -80,13 +75,18 @@ def cmd_runpcode(args):
             dbm.close_all()
         except Exception:
             pass
-    if type(screen).__name__ == "HeadlessScreen":
+    if type(screen) is HeadlessScreen:
         dump = screen.dump()
         if dump.strip():
             print("---- kepernyo ----")
             print(dump)
         for line in screen.lists:
             print(line)
+    else:
+        try:
+            screen.close()
+        except Exception:
+            pass
 
 
 def cmd_build(args):
@@ -113,19 +113,14 @@ def _basedir():
     except NameError:
         return os.getcwd()
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))) if "__file__" in globals() and not getattr(sys, "frozen", False) else None
-from hxbase.screen import HeadlessScreen
+from hxbase.screen import ConsoleScreen, HeadlessScreen
 from hxbase.db import DBManager
 from hxbase.vm import VM
 def _screen():
     headless = "--headless" in sys.argv or os.environ.get("HXBASE_HEADLESS") == "1"
     if headless:
         return HeadlessScreen()
-    try:
-        from hxbase.screen import GuiScreen
-        return GuiScreen()
-    except Exception as e:
-        print("[hxbase] GUI nem erheto, headless: " + str(e))
-        return HeadlessScreen()
+    return ConsoleScreen()
 def main():
     base = _basedir()
     pcode = json.loads(base64.b64decode(PCODE_B64).decode("utf-8"))
@@ -137,13 +132,13 @@ def main():
     finally:
         try: dbm.close_all()
         except Exception: pass
-    if type(sc).__name__ == "HeadlessScreen":
+    if type(sc) is HeadlessScreen:
         d = sc.dump()
         if d.strip():
             print("---- kepernyo ----"); print(d)
         for line in sc.lists: print(line)
     else:
-        try: sc.mainloop()
+        try: sc.close()
         except Exception: pass
 if __name__ == "__main__":
     main()
@@ -189,7 +184,7 @@ if __name__ == "__main__":
                "--workpath", os.path.join(work, "pyi_build"),
                "--specpath", work,
                os.path.join(dist_src, "_boot.py")]
-        # tkinter-t a PyInstaller hook automatikusan csomagolja
+        # sztenderd konyvtar + sqlite3, kulso fuggoseg nincs
         print("EXE keszites: " + " ".join(cmd))
         pr = subprocess.run(cmd, timeout=600)
         if pr.returncode == 0 and os.path.exists(exe_out):
