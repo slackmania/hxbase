@@ -67,6 +67,121 @@ def _map(c):
     return table.get(c.strip().upper(), "white")
 
 
+def _stdin_is_tty():
+    import sys as _s
+    try:
+        return _s.stdin.isatty()
+    except Exception:
+        return False
+
+
+def _get_key():
+    """Egy billentyu nyers olvasasa (terminal-elozmeny nelkul).
+    Vissza: 'Up','Down','Left','Right','Home','End','Tab','ShiftTab',
+    'Return','Escape','BackSpace','space' vagy a leutott karakter.
+    None: nem interaktiv stdin (pipe) vagy hiba."""
+    import sys as _s
+    if not _stdin_is_tty():
+        return None
+    try:
+        import msvcrt
+    except ImportError:
+        return _get_key_posix()
+    try:
+        ch = msvcrt.getwch()
+    except Exception:
+        return None
+    if ch in ("\x00", "\xe0"):
+        try:
+            ch2 = msvcrt.getwch()
+        except Exception:
+            return None
+        return {"H": "Up", "P": "Down", "K": "Left", "M": "Right",
+                "G": "Home", "O": "End", "R": "Insert", "S": "Delete",
+                "I": "PgUp", "Q": "PgDn"}.get(ch2, "")
+    if ch == "\x03":
+        raise KeyboardInterrupt()
+    if ch == "\r":
+        return "Return"
+    if ch == "\t":
+        return "Tab"
+    if ch == "\x0f":
+        return "ShiftTab"
+    if ch == "\x1b":
+        return "Escape"
+    if ch == "\x08":
+        return "BackSpace"
+    if ch == " ":
+        return "space"
+    return ch
+
+
+def _get_key_posix():
+    import sys as _s
+    import select as _sel
+    try:
+        import tty as _tty
+        import termios as _tm
+    except ImportError:
+        return None
+    fd = _s.stdin.fileno()
+    try:
+        old = _tm.tcgetattr(fd)
+    except Exception:
+        return None
+    try:
+        _tty.setraw(fd)
+        ch = _s.stdin.read(1)
+        if ch == "\x1b":
+            seq = ""
+            while True:
+                r, _, _ = _sel.select([_s.stdin], [], [], 0.05)
+                if not r:
+                    break
+                seq += _s.stdin.read(1)
+            return {"[A": "Up", "[B": "Down", "[C": "Right", "[D": "Left",
+                    "[H": "Home", "[F": "End", "[Z": "ShiftTab",
+                    "OP": "F1", "OQ": "F2"}.get(seq, "Escape")
+        if ch in ("\r", "\n"):
+            return "Return"
+        if ch == "\t":
+            return "Tab"
+        if ch == "\x7f":
+            return "BackSpace"
+        if ch == "\x03":
+            raise KeyboardInterrupt()
+        if ch == " ":
+            return "space"
+        return ch
+    except KeyboardInterrupt:
+        raise
+    except Exception:
+        return None
+    finally:
+        try:
+            _tm.tcsetattr(fd, _tm.TCSADRAIN, old)
+        except Exception:
+            pass
+
+
+def _hide_cursor():
+    import sys as _s
+    try:
+        _s.stdout.write("\x1b[?25l")
+        _s.stdout.flush()
+    except Exception:
+        pass
+
+
+def _show_cursor():
+    import sys as _s
+    try:
+        _s.stdout.write("\x1b[?25h")
+        _s.stdout.flush()
+    except Exception:
+        pass
+
+
 class HeadlessScreen:
     """GUI nelkuli kepernyo: buffer + GET-lista. Teszthez es --headless modhoz."""
 
@@ -298,30 +413,56 @@ class ConsoleScreen(HeadlessScreen):
 
     def read(self, memvars, action_fn=None):
         # DOS-mod: hattermentes -> keretes dialog a racsra -> adatbekeres -> visszaallitas.
+        # Csak caption (SAY) nem fokuszalhato: GET, CHECKBOX, RADIO, BUTTON igen.
         entries = self.pending_gets
         self.pending_gets = []
         if not entries:
             return
         focus = [g for g in entries if g.get("kind", "get") in ("get", "checkbox", "radio", "button")]
+        if not _stdin_is_tty():
+            self._read_piped(memvars, action_fn, focus)
+            return
+        self._read_keys(memvars, action_fn, focus)
 
-        def content(g):
-            kind = g.get("kind", "get")
-            if kind == "get":
-                return "%s: [%s]" % (g["var"], str(memvars.get(g["var"].upper(), ""))[:18])
-            if kind == "checkbox":
-                return "[%s] %s" % ("X" if memvars.get(g["var"].upper(), False) else " ",
-                                    g.get("prompt") or g["var"])
-            if kind == "radio":
-                opts = g.get("options") or []
-                try:
-                    ch = int(memvars.get(g["var"].upper(), 1) or 1)
-                except Exception:
-                    ch = 1
-                cur = opts[ch - 1] if 1 <= ch <= len(opts) else "?"
-                return "%s: < %s >" % (g.get("title") or g["var"], cur)
-            return "[ %s ]" % g.get("label")
+    def _dialog_content(self, g, edits):
+        kind = g.get("kind", "get")
+        if kind == "get":
+            return "%s: [%s]" % (g["var"], str(edits.get(g["var"], ""))[:18])
+        if kind == "checkbox":
+            return "[%s] %s" % ("X" if edits.get(g["var"], False) else " ", g.get("prompt") or g["var"])
+        if kind == "radio":
+            opts = g.get("options") or []
+            try:
+                ch = int(edits.get(g["var"], 1) or 1)
+            except Exception:
+                ch = 1
+            cur = opts[ch - 1] if 1 <= ch <= len(opts) else "?"
+            return "%s: < %s >" % (g.get("title") or g["var"], cur)
+        return "[ %s ]" % g.get("label")
 
-        texts = [content(g) for g in focus]
+    def _draw_dialog(self, focus, edits, cur_idx, title, hint):
+        texts = [self._dialog_content(g, edits) for g in focus]
+        r1, c1, r2, c2, w = self._dialog_geom(texts)
+        saved = self.save_region(r1, c1, r2, c2)
+        self.draw_box(r1, c1, r2, c2, title)
+        for i, g in enumerate(focus):
+            t = texts[i][:w - 4].ljust(w - 4)
+            if i == cur_idx:
+                self._put(r1 + 2 + i, c1 + 2, t, "black", "white")
+            else:
+                self._put(r1 + 2 + i, c1 + 2, t, "white", "black")
+        self._put(r2 - 1, c1 + max(1, (w - len(hint)) // 2), hint[:w - 2], "black", "white")
+        self._render()
+        return saved, r1, c1, r2, c2, w
+
+    def _read_piped(self, memvars, action_fn, focus):
+        # Nem interaktiv stdin (pipe): soronkenti bekeres, ahogy eddig.
+        pre = {}
+        for g in focus:
+            var = g.get("var")
+            if var:
+                pre[var] = memvars.get(var.upper(), "")
+        texts = [self._dialog_content(g, pre) for g in focus]
         r1, c1, r2, c2, w = self._dialog_geom(texts)
         saved = self.save_region(r1, c1, r2, c2)
         self.draw_box(r1, c1, r2, c2, "Adatbevitel")
@@ -376,6 +517,234 @@ class ConsoleScreen(HeadlessScreen):
         self.restore_region(saved)
         self._render()
 
+    def _read_keys(self, memvars, action_fn, focus):
+        # Nyers billentyuk: nincs terminal-echo, nincs elozmeny. TAB vegigsetal
+        # a mezokon es gombokon (caption kivetel mindenen).
+        import sys as _sys
+        edits, poses = {}, {}
+        for g in focus:
+            kind = g.get("kind", "get")
+            var = g.get("var")
+            if kind == "get":
+                edits[var] = str(memvars.get(var.upper(), ""))[:18]
+                poses[var] = len(edits[var])
+            elif kind == "checkbox":
+                edits[var] = bool(memvars.get(var.upper(), False))
+            elif kind == "radio":
+                try:
+                    ch = int(memvars.get(var.upper(), 1) or 1)
+                except Exception:
+                    ch = 1
+                opts = g.get("options") or []
+                edits[var] = max(1, min(ch, len(opts) or 1))
+        hint = "Tab: mezok  Enter: OK  ^W: kesz  Esc: megse"
+        saved, r1, c1, r2, c2, w = self._draw_dialog(focus, edits, 0, "Adatbevitel", hint)
+        cur = {"i": 0}
+
+        def render():
+            texts = [self._dialog_content(g, edits) for g in focus]
+            for i, t in enumerate(texts):
+                t = t[:w - 4].ljust(w - 4)
+                if i == cur["i"]:
+                    self._put(r1 + 2 + i, c1 + 2, t, "black", "white")
+                else:
+                    self._put(r1 + 2 + i, c1 + 2, t, "white", "black")
+            self._put(r2 - 1, c1 + max(1, (w - len(hint)) // 2), hint[:w - 2], "black", "white")
+            self._render()
+            g = focus[cur["i"]]
+            if g.get("kind", "get") == "get":
+                var = g["var"]
+                pos = min(poses[var], 18, len(edits[var]))
+                grow = r1 + 2 + cur["i"] + 1
+                gcol = c1 + 2 + len(var) + 3 + pos + 1
+                _sys.stdout.write("\x1b[%d;%dH\x1b[?25h" % (grow, gcol))
+            else:
+                _sys.stdout.write("\x1b[?25l")
+            _sys.stdout.flush()
+
+        def finish(save):
+            if save:
+                for g in focus:
+                    kind = g.get("kind", "get")
+                    var = g.get("var")
+                    if kind == "get":
+                        memvars[var.upper()] = HeadlessScreen._apply_picture(edits[var], g.get("picture"))
+                    elif kind in ("checkbox", "radio"):
+                        memvars[var.upper()] = edits[var]
+            self.restore_region(saved)
+            self._render()
+            _show_cursor()
+
+        _hide_cursor()
+        render()
+        n = len(focus)
+        try:
+            while True:
+                try:
+                    k = _get_key()
+                except KeyboardInterrupt:
+                    finish(False)
+                    raise
+                if k is None or k == "":
+                    continue
+                g = focus[cur["i"]]
+                kind = g.get("kind", "get")
+                var = g.get("var")
+                if k in ("Tab", "Down"):
+                    cur["i"] = (cur["i"] + 1) % n
+                elif k in ("ShiftTab", "Up"):
+                    cur["i"] = (cur["i"] - 1) % n
+                elif k == "Escape":
+                    finish(False)
+                    return
+                elif k == "\x17":
+                    # Ctrl+W: Clipper-modra kesz (OK) barhonnan
+                    finish(True)
+                    return
+                elif k == "Return":
+                    if kind == "button":
+                        if action_fn is not None:
+                            try:
+                                action_fn(g.get("action"))
+                            except Exception as e:
+                                memvars["ERROR"] = str(e)
+                        cur["i"] = (cur["i"] + 1) % n
+                    elif kind == "checkbox":
+                        edits[var] = not edits[var]
+                    elif kind == "radio":
+                        opts = g.get("options") or []
+                        edits[var] = edits[var] % (len(opts) or 1) + 1
+                    elif cur["i"] == n - 1:
+                        finish(True)
+                        return
+                    else:
+                        cur["i"] += 1
+                elif k == "space":
+                    if kind == "checkbox":
+                        edits[var] = not edits[var]
+                    elif kind == "radio":
+                        opts = g.get("options") or []
+                        edits[var] = edits[var] % (len(opts) or 1) + 1
+                    elif kind == "get":
+                        t = edits[var]
+                        p = poses[var]
+                        if len(t) < 18:
+                            edits[var] = t[:p] + " " + t[p:]
+                            poses[var] = p + 1
+                elif k == "BackSpace":
+                    if kind == "get":
+                        p = poses[var]
+                        if p > 0:
+                            t = edits[var]
+                            edits[var] = t[:p - 1] + t[p:]
+                            poses[var] = p - 1
+                elif k == "Left":
+                    if kind == "get":
+                        poses[var] = max(0, poses[var] - 1)
+                    elif kind == "radio":
+                        opts = g.get("options") or []
+                        edits[var] = (edits[var] - 2) % (len(opts) or 1) + 1
+                    else:
+                        cur["i"] = (cur["i"] - 1) % n
+                elif k == "Right":
+                    if kind == "get":
+                        poses[var] = min(len(edits[var]), poses[var] + 1)
+                    elif kind == "radio":
+                        opts = g.get("options") or []
+                        edits[var] = edits[var] % (len(opts) or 1) + 1
+                    else:
+                        cur["i"] = (cur["i"] + 1) % n
+                elif k == "Home":
+                    if kind == "get":
+                        poses[var] = 0
+                elif k == "End":
+                    if kind == "get":
+                        poses[var] = len(edits[var])
+                elif kind == "get" and len(k) == 1 and k.isprintable():
+                    t = edits[var]
+                    p = poses[var]
+                    if len(t) < 18:
+                        edits[var] = t[:p] + k + t[p:]
+                        poses[var] = p + 1
+                elif kind == "radio" and k.isdigit():
+                    opts = g.get("options") or []
+                    if k != "0" and int(k) <= len(opts):
+                        edits[var] = int(k)
+                render()
+        finally:
+            _show_cursor()
+
+    def _wait_key(self, prompt=""):
+        # Nyers billentyuvaras (nincs echo, nincs elozmeny); pipe eseten Enter.
+        if not _stdin_is_tty():
+            if prompt:
+                try:
+                    input(prompt)
+                except EOFError:
+                    pass
+            return ""
+        _hide_cursor()
+        if prompt:
+            import sys as _s
+            _s.stdout.write(prompt)
+            _s.stdout.flush()
+        try:
+            while True:
+                try:
+                    k = _get_key()
+                except KeyboardInterrupt:
+                    return "Escape"
+                if k is None or k == "":
+                    continue
+                return k
+        finally:
+            _show_cursor()
+
+    def _input_line(self, prompt, initial=""):
+        # Sorecho billentyunkent, terminal-elozmeny nelkul.
+        import sys as _s
+        if not _stdin_is_tty():
+            try:
+                _s.stdout.write(prompt)
+                _s.stdout.flush()
+                return input()
+            except EOFError:
+                return ""
+        _s.stdout.write(prompt)
+        _s.stdout.flush()
+        buf = list(initial)
+        _s.stdout.write("".join(buf))
+        _s.stdout.flush()
+        _show_cursor()
+        try:
+            while True:
+                try:
+                    k = _get_key()
+                except KeyboardInterrupt:
+                    _s.stdout.write("\n")
+                    return initial
+                if k is None or k == "":
+                    continue
+                if k in ("Return",):
+                    _s.stdout.write("\n")
+                    return "".join(buf)
+                if k == "Escape":
+                    _s.stdout.write("\n")
+                    return initial
+                if k == "BackSpace":
+                    if buf:
+                        buf.pop()
+                        _s.stdout.write("\b \b")
+                        _s.stdout.flush()
+                    continue
+                if len(k) == 1 and k.isprintable():
+                    if len(buf) < 60:
+                        buf.append(k)
+                        _s.stdout.write(k)
+                        _s.stdout.flush()
+        finally:
+            _hide_cursor()
+
     def message(self, text, title=""):
         super().message(text, title)
         lines = str(text).splitlines() or [""]
@@ -387,15 +756,12 @@ class ConsoleScreen(HeadlessScreen):
         ok = "[ OK - Enter ]"
         self._put(r1 + 2 + len(lines), c1 + 2, ok.ljust(w - 4), "black", "white")
         self._render()
-        try:
-            input()
-        except EOFError:
-            pass
+        self._wait_key()
         self.restore_region(saved)
         self._render()
 
     def menu(self, title, options):
-        # Lenyilo ablak a racsra, hattermentessel. Sorszam beirasa valaszt.
+        # Lenyilo ablak a racsra, hattermentessel. Nyilak/Enter vagy sorszam.
         self.menus.append((title, options))
         if not options:
             return 0
@@ -404,36 +770,69 @@ class ConsoleScreen(HeadlessScreen):
         r1, c1, r2, c2, w = self._dialog_geom(numbered + [str(title or "")])
         saved = self.save_region(r1, c1, r2, c2)
         self.draw_box(r1, c1, r2, c2, str(title or "Menu"))
-        for i, t in enumerate(numbered):
-            self._put(r1 + 2 + i, c1 + 2, t[:w - 4].ljust(w - 4), "white", "black")
-        self._render()
-        while True:
-            try:
-                ans = input("Valasz [1-%d, ures = 1]: " % len(opts))
-            except EOFError:
-                ans = ""
-            if ans.strip() == "":
-                ch = 1
-                break
-            if ans.strip().isdigit() and 1 <= int(ans.strip()) <= len(opts):
-                ch = int(ans.strip())
-                break
-            print("1 es %d kozotti szamot adj meg." % len(opts))
-        self.restore_region(saved)
-        self._render()
+        sel = {"i": 0}
+
+        def render():
+            for i, t in enumerate(numbered):
+                t = ("> " + t if i == sel["i"] else "  " + t)[:w - 4].ljust(w - 4)
+                if i == sel["i"]:
+                    self._put(r1 + 2 + i, c1 + 2, t, "black", "white")
+                else:
+                    self._put(r1 + 2 + i, c1 + 2, t, "white", "black")
+            self._render()
+
+        if not _stdin_is_tty():
+            render()
+            while True:
+                try:
+                    ans = input("Valasz [1-%d, ures = 1]: " % len(opts))
+                except EOFError:
+                    ans = ""
+                if ans.strip() == "":
+                    ch = 1
+                    break
+                if ans.strip().isdigit() and 1 <= int(ans.strip()) <= len(opts):
+                    ch = int(ans.strip())
+                    break
+                print("1 es %d kozotti szamot adj meg." % len(opts))
+            self.restore_region(saved)
+            self._render()
+            return ch
+        render()
+        try:
+            while True:
+                try:
+                    k = self._wait_key()
+                except KeyboardInterrupt:
+                    k = "Escape"
+                if k in ("Up", "Left"):
+                    sel["i"] = (sel["i"] - 1) % len(opts)
+                    render()
+                elif k in ("Down", "Right", "Tab", "space"):
+                    sel["i"] = (sel["i"] + 1) % len(opts)
+                    render()
+                elif k in ("Return",):
+                    ch = sel["i"] + 1
+                    break
+                elif k == "Escape":
+                    ch = 0
+                    break
+                elif isinstance(k, str) and k.isdigit() and k != "0" and int(k) <= len(opts):
+                    ch = int(k)
+                    break
+        finally:
+            self.restore_region(saved)
+            self._render()
         return ch
 
     def wait(self, msg=""):
         super().wait(msg)
         if msg:
             print(msg)
-        try:
-            input("...Enter...")
-        except EOFError:
-            pass
+        self._wait_key("...billi...")
 
     def browse(self, alias, columns, rows, widths=None):
-        # Csak szoveg: igazitott tablazat, laponkent szunettel.
+        # Csak szoveg: igazitott tablazat, laponkent szunettel (nyers billentyu).
         super().browse(alias, columns, rows, widths)
         import sys as _sys
         lines = format_table(columns, rows, widths)
@@ -441,20 +840,14 @@ class ConsoleScreen(HeadlessScreen):
         for i, ln in enumerate(lines):
             print(ln)
             if tty and (i + 1) % 20 == 0 and i + 1 < len(lines):
-                try:
-                    more = input("-- tovabb (Enter), vege (Q): ")
-                except EOFError:
-                    break
-                if more.strip().upper() == "Q":
+                k = self._wait_key("-- tovabb (barmi), vege (Q): ")
+                if isinstance(k, str) and k.strip().upper() == "Q":
                     break
 
     def prompt_user(self, text):
         if text:
             print(text)
-        try:
-            return input("> ")
-        except EOFError:
-            return ""
+        return self._input_line("> ", "")
 
     def close(self):
         self._render()

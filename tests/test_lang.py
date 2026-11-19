@@ -136,6 +136,39 @@ def test_box_save_restore():
     assert sc.text_row(10) == " " * 10 + "HATTER"
 
 
+def test_read_keynav():
+    # Nyers billentyuk szimulalasa: TAB-seta, Space, nyilak, gomb, Ctrl+W.
+    # Felfele nyil NEM olvas vissza elozmenyt, csak fokusz valt.
+    import io
+    from contextlib import redirect_stdout
+    import hxbase.screen as S
+    from hxbase.screen import ConsoleScreen
+    keys = iter(["a", "n", "n", "a", "Tab", "space", "Tab", "Right",
+                 "Up", "Tab", "Tab", "Return", "\x17"])
+    old_tty, old_key = S._stdin_is_tty, S._get_key
+    S._stdin_is_tty = lambda: True
+    S._get_key = lambda: next(keys, "Escape")
+    try:
+        fired = []
+        mem = {}
+        sc = ConsoleScreen()
+        sc.pending_gets = [
+            {"kind": "get", "row": 1, "col": 1, "var": "W_NEV", "picture": None},
+            {"kind": "checkbox", "row": 2, "col": 1, "var": "W_HIR", "prompt": "Hirlevel"},
+            {"kind": "radio", "row": 3, "col": 1, "var": "W_FIZ",
+             "options": ["a", "b", "c"], "title": "Fiz"},
+            {"kind": "button", "row": 4, "col": 1, "label": "OK", "action": {"t": "call"}},
+        ]
+        with redirect_stdout(io.StringIO()):
+            sc.read(mem, lambda a: fired.append(1))
+    finally:
+        S._stdin_is_tty, S._get_key = old_tty, old_key
+    assert fired == [1]
+    assert mem.get("W_NEV") == "anna", mem
+    assert mem.get("W_HIR") is True, mem
+    assert mem.get("W_FIZ") == 2, mem
+
+
 def test_new_funcs():
     sc, vm = run('''
 x = TRANSFORM(1234.5, "999,999.99")
