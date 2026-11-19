@@ -213,8 +213,9 @@ class VM:
                 self.db.close_current()
         elif t == "create":
             defs = parse_field_defs(s["defs"])
-            self.db.create_table(s["table"], defs)
-            self.screen.list_out(f"Letrehozva: {s['table']}")
+            tbl = self.eval_table_name(s["table"])
+            self.db.create_table(tbl, defs)
+            self.screen.list_out(f"Letrehozva: {tbl}")
         elif t == "append":
             self.need_table()
             self.db.cur().append_blank()
@@ -315,6 +316,10 @@ class VM:
 
     def eval_table_name(self, node_or_str):
         if isinstance(node_or_str, dict):
+            if node_or_str.get("t") == "lit" and isinstance(node_or_str.get("v"), str):
+                key = node_or_str["v"].upper()
+                if key in self.mem and str(self.mem[key]).strip() != "":
+                    return to_str(self.mem[key])
             return to_str(self.ev(node_or_str))
         return str(node_or_str).strip().strip('"').strip("'")
 

@@ -53,6 +53,36 @@ def split_outside_strings(s, sep=";"):
     return parts
 
 
+def split_top(s, sep=","):
+    """Vesszovel vag, de stringen es zarojelen belul nem."""
+    parts, cur, q, depth = [], [], None, 0
+    for ch in s:
+        if q:
+            cur.append(ch)
+            if ch == q:
+                q = None
+            continue
+        if ch in "\"'":
+            q = ch
+            cur.append(ch)
+            continue
+        if ch in "([":
+            depth += 1
+            cur.append(ch)
+            continue
+        if ch in ")]":
+            depth = max(0, depth - 1)
+            cur.append(ch)
+            continue
+        if depth == 0 and ch == sep:
+            parts.append("".join(cur))
+            cur = []
+            continue
+        cur.append(ch)
+    parts.append("".join(cur))
+    return parts
+
+
 class ExprParser:
     def __init__(self, text):
         self.toks = tokenize(text)
@@ -207,6 +237,16 @@ class ExprParser:
 
 def ex(text):
     return ExprParser(text.strip()).parse()
+
+
+def name_or_expr(s):
+    """Tabla-nev: csupasz azonosito -> literal, egyebkent kifejezes (valtozo/jel)."""
+    t = s.strip()
+    if (t.startswith('"') and t.endswith('"')) or (t.startswith("'") and t.endswith("'")):
+        return {"t": "lit", "v": t[1:-1]}
+    if re.match(r"^[A-Za-z_][A-Za-z0-9_.]*$", t):
+        return {"t": "lit", "v": t}
+    return ex(t)
 
 
 AT_RE = re.compile(r"^\s*@\s*(.+?)\s+SAY\s+(.+?)(?:\s+COLOR\s+(.+))?\s*$", re.I)
@@ -422,7 +462,7 @@ def parse_stmt(p, no, text):
         rest = u[1:].strip()
         if rest.startswith("?"):
             rest = rest[1:].strip()
-        args = [ex(a) for a in split_outside_strings(rest, ",") if a.strip()] if rest else []
+        args = [ex(a) for a in split_top(rest, ",") if a.strip()] if rest else []
         return {"t": "qmark", "line": no, "args": args}
     if k in ("STORE",):
         m = re.match(r"STORE\s+(.+?)\s+TO\s+(.+)$", u, re.I)
@@ -442,21 +482,26 @@ def parse_stmt(p, no, text):
         if not rest:
             return {"t": "use", "line": no, "table": None}
         m = re.match(r"(.+?)(?:\s+ALIAS\s+([A-Za-z_][A-Za-z0-9_]*))?\s*$", rest, re.I)
-        return {"t": "use", "line": no, "table": m.group(1).strip(), "alias": (m.group(2) or "").upper() or None}
+        return {"t": "use", "line": no, "table": name_or_expr(m.group(1).strip()), "alias": (m.group(2) or "").upper() or None}
     if uu.startswith("SELECT "):
         return {"t": "select", "line": no, "which": u[7:].strip()}
     if uu.startswith("CLOSE"):
         return {"t": "close", "line": no, "raw": u[5:].strip()}
     if uu.startswith("CREATE "):
-        m = re.match(r"CREATE\s+(?:TABLE\s+)?([A-Za-z_][A-Za-z0-9_.]*)\s*\((.+)\)\s*$", u, re.I | re.S)
-        need(m, f"Hibas CREATE: {u} (pelda: CREATE vevok (nev C(30), kor N(3)))")
-        return {"t": "create", "line": no, "table": m.group(1), "defs": m.group(2)}
+        i1 = u.find("(")
+        i2 = u.rfind(")")
+        need(i1 > 0 and i2 > i1, f"Hibas CREATE: {u} (pelda: CREATE vevok (nev C(30), kor N(3)))")
+        head = u[:i1].strip()
+        defs = u[i1 + 1:i2]
+        m = re.match(r"CREATE\s+(?:TABLE\s+)?(.+?)\s*$", head, re.I)
+        need(m, f"Hibas CREATE: {u}")
+        return {"t": "create", "line": no, "table": name_or_expr(m.group(1)), "defs": defs}
     if uu.startswith("APPEND BLANK"):
         return {"t": "append", "line": no}
     if uu.startswith("REPLACE "):
         rest = u[8:].strip()
         pairs = []
-        for part in split_outside_strings(rest, ","):
+        for part in split_top(rest, ","):
             m = re.match(r"([A-Za-z_][A-Za-z0-9_]*(?:->[A-Za-z_][A-Za-z0-9_]*)?)\s+WITH\s+(.+)$", part.strip(), re.I | re.S)
             need(m, f"Hibas REPLACE resz: {part}")
             pairs.append({"field": m.group(1).upper(), "expr": ex(m.group(2))})
@@ -532,7 +577,7 @@ def parse_stmt(p, no, text):
         m = re.match(r"([A-Za-z_][A-Za-z0-9_]*)\s*(?:\((.*)\))?\s*(?:WITH\s+(.+))?\s*$", rest, re.I | re.S)
         if m:
             args_s = m.group(2) if m.group(2) is not None else (m.group(3) or "")
-            args = [ex(a) for a in split_outside_strings(args_s, ",") if a.strip()] if args_s.strip() else []
+            args = [ex(a) for a in split_top(args_s, ",") if a.strip()] if args_s.strip() else []
             return {"t": "docall", "line": no, "name": m.group(1).upper(), "args": args}
         raise ValueError(f"Hibas DO: {u}")
 
@@ -551,6 +596,6 @@ def parse_stmt(p, no, text):
 
 
 def parse_rc(rc):
-    parts = split_outside_strings(rc, ",")
+    parts = split_top(rc, ",")
     need(len(parts) == 2, f"Hibas sor,oszlop: {rc} (pelda: 5,10)")
     return ex(parts[0].strip()), ex(parts[1].strip())

@@ -1,0 +1,1 @@
+python -m hxbase build %1 -o dist\%1.exe
