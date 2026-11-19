@@ -1,7 +1,13 @@
 * BEVITEL - kezi adatbevitel pozicionalt SAY/GET-tel a teszt50-be
 CLEAR
 @ 2,10 SAY "BEVITEL - teszt50 kezi bovites" COLOR "W/B"
-USE teszt50
+CLOSE ALL
+TRY
+  USE teszt50
+CATCH
+  CREATE teszt50 (kod N(3), nev C(30), kor N(3), aktiv L)
+  USE teszt50
+ENDTRY
 @ 4,10 SAY "Jelenlegi sorok: " + STR(RECCOUNT())
 DO WHILE .T.
   m_kod = RECCOUNT() + 1
