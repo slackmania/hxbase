@@ -20,7 +20,7 @@ def parse_field_defs(defs_str):
         if not m:
             raise ValueError(f"Hibas mezodefinicio: {part!r} (pelda: NEV C(30))")
         name, typ, ln, dc = m.group(1).upper(), m.group(2).upper(), m.group(3), m.group(4)
-        out.append((name, typ, int(ln) if ln else (30 if typ == "C" else 10), int(dc) if dc else 0))
+        out.append((name, typ, int(ln) if ln else {"C": 30, "M": 30, "D": 10, "L": 1, "N": 10}[typ], int(dc) if dc else 0))
     if not out:
         raise ValueError("Ures mezolista")
     return out
