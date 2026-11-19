@@ -1,0 +1,8 @@
+[project]
+name = "hxbase"
+version = "0.1.0"
+description = "Clipper/dBaseIII ihletesu modern xBase nyelv: GUI-grid + SQLite + p-kod + exe-build (MVP)"
+requires-python = ">=3.10"
+
+[project.scripts]
+hxbase = "hxbase.cli:main"

@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+*.db
+*.pcode
+_hxbuild/
+dist/
+.pytest_cache/
