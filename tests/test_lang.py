@@ -125,6 +125,17 @@ COUNT TO c FOR kor > 15
     assert vm.mem["C"] == 3
 
 
+def test_box_save_restore():
+    from hxbase.screen import HeadlessScreen
+    sc = HeadlessScreen()
+    sc.say(10, 10, "HATTER")
+    saved = sc.save_region(9, 9, 12, 20)
+    sc.draw_box(9, 9, 12, 20, "Ablak")
+    assert sc.buf[9][9] == "┌" and sc.buf[12][20] == "┘"
+    sc.restore_region(saved)
+    assert sc.text_row(10) == " " * 10 + "HATTER"
+
+
 def test_new_funcs():
     sc, vm = run('''
 x = TRANSFORM(1234.5, "999,999.99")

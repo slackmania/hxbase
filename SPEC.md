@@ -12,7 +12,10 @@ dBaseIII/Clipper-érzés: procedurális, workarea-alapú, `USE/SKIP/REPLACE`, `@
 ## 3. Képernyő
 - `CLEAR [SCREEN]`, `SET COLOR TO "W/B"`.
 - `@ r,c SAY kif [COLOR c]`, `@ r,c GET var [PICTURE p]` (`"@!"` = nagybetűsít), `READ`.
-- Widgetek (graphic-env-clipper mintara): `@ r,c CHECKBOX var [PROMPT p]`, `@ r,c RADIO var OPTIONS "a,b,c" [TITLE t]`, `@ r,c BUTTON "felirat" ACTION fuggveny()`. GUI-ban űrlap (Checkbutton/Radiobutton/kattintható Button), headless módban beadott inputokból.
+- Widgetek, DOS-emulációval (nincs valódi GUI-widget): `READ`-kor a program elmenti a háttér celláit a memóriába, keretes dialógust rajzol a rácsra (`Tab` mozgás, `Space`/Enter kapcsol, `Esc` elvet), majd `OK`-ra visszaolvassa az elmentett hátteret:
+  - `@ r,c CHECKBOX var [PROMPT p]` — `[X]/[ ]` jelölő,
+  - `@ r,c RADIO var OPTIONS "a,b,c" [TITLE t]` — `< választás >` léptető,
+  - `@ r,c BUTTON "felirat" ACTION fuggveny()` — `[ felirat ]`, Enterre futtatja a függvényt, az ablak nyitva marad.
 - `? kif [, ...]`, `MENU "a,b,c" TO v [TITLE t]`, `BROWSE`, `MSGBOX(kif)`, `WAIT`, `ACCEPT [TO v] [PROMPT p]`, `INPUT`.
 
 ## 4. Adatbázis (SQLite)
