@@ -159,14 +159,23 @@ def test_read_keynav():
              "options": ["a", "b", "c"], "title": "Fiz"},
             {"kind": "button", "row": 4, "col": 1, "label": "OK", "action": {"t": "call"}},
         ]
+        seen = {}
+
+        def _fire(a):
+            fired.append(1)
+            seen.update(mem)
+
         with redirect_stdout(io.StringIO()):
-            sc.read(mem, lambda a: fired.append(1))
+            sc.read(mem, _fire)
     finally:
         S._stdin_is_tty, S._get_key = old_tty, old_key
     assert fired == [1]
     assert mem.get("W_NEV") == "anna", mem
     assert mem.get("W_HIR") is True, mem
     assert mem.get("W_FIZ") == 2, mem
+    # a gomb action mar a beirt ertekeket latja (flush a futtatas elott)
+    assert seen.get("W_NEV") == "anna", seen
+    assert seen.get("W_FIZ") == 2, seen
 
 
 def test_new_funcs():

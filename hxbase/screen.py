@@ -540,6 +540,17 @@ class ConsoleScreen(HeadlessScreen):
         hint = "Tab: mezok  Enter: OK  ^W: kesz  Esc: megse"
         saved, r1, c1, r2, c2, w = self._draw_dialog(focus, edits, 0, "Adatbevitel", hint)
         cur = {"i": 0}
+        had = set(memvars.keys())
+        snap = dict(memvars)
+
+        def _flush():
+            for g in focus:
+                kind = g.get("kind", "get")
+                var = g.get("var")
+                if kind == "get":
+                    memvars[var.upper()] = HeadlessScreen._apply_picture(edits[var], g.get("picture"))
+                elif kind in ("checkbox", "radio"):
+                    memvars[var.upper()] = edits[var]
 
         def render():
             texts = [self._dialog_content(g, edits) for g in focus]
@@ -564,13 +575,11 @@ class ConsoleScreen(HeadlessScreen):
 
         def finish(save):
             if save:
-                for g in focus:
-                    kind = g.get("kind", "get")
-                    var = g.get("var")
-                    if kind == "get":
-                        memvars[var.upper()] = HeadlessScreen._apply_picture(edits[var], g.get("picture"))
-                    elif kind in ("checkbox", "radio"):
-                        memvars[var.upper()] = edits[var]
+                _flush()
+            else:
+                for k in [k for k in memvars.keys() if k not in had]:
+                    del memvars[k]
+                memvars.update(snap)
             self.restore_region(saved)
             self._render()
             _show_cursor()
@@ -603,6 +612,7 @@ class ConsoleScreen(HeadlessScreen):
                     return
                 elif k == "Return":
                     if kind == "button":
+                        _flush()
                         if action_fn is not None:
                             try:
                                 action_fn(g.get("action"))
@@ -670,6 +680,7 @@ class ConsoleScreen(HeadlessScreen):
                     opts = g.get("options") or []
                     if k != "0" and int(k) <= len(opts):
                         edits[var] = int(k)
+                _flush()
                 render()
         finally:
             _show_cursor()
