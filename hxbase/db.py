@@ -45,14 +45,35 @@ class WorkArea:
     def _load_schema(self):
         cur = self.conn.execute(f'PRAGMA table_info("{self.table}")')
         cols = [dict(r) for r in cur.fetchall()]
+        # valodi szelessegek a meta-tablabol (CREATE-kor mentve)
+        meta = {}
+        try:
+            names = [x[0] for x in self.conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
+            if "_hxmeta" in names:
+                try:
+                    for r in self.conn.execute('SELECT field, typ, w, d FROM "_hxmeta"'):
+                        meta[r[0]] = (r[1], r[2], r[3])
+                except Exception:
+                    for r in self.conn.execute('SELECT field, w, d FROM "_hxmeta"'):
+                        meta[r[0]] = ("C", r[1], r[2])
+        except Exception:
+            meta = {}
         # _recno,_deleted kihagyasa
         for c in cols:
             n = c["name"]
-            if n in ("_recno", "_deleted"):
+            if n in ("_recno", "_deleted", "_hxmeta"):
+                continue
+            if n in meta:
+                typ, w, d = meta[n]
+                self.fields.append((n.upper(), typ, w, d))
                 continue
             t = c["type"].upper()
             typ = "C" if t == "TEXT" else "N"
-            self.fields.append((n.upper(), typ, 30, 0))
+            if n in meta:
+                w, d = meta[n]
+            else:
+                w, d = (30, 0)
+            self.fields.append((n.upper(), typ, w, d))
 
     def column_names(self):
         return [f[0] for f in self.fields]
@@ -213,6 +234,10 @@ class DBManager:
         for (fname, typ, ln, dc) in field_defs:
             cols.append(f'"{fname}" {SQLITE_TYPE[typ]}')
         conn.execute(f'CREATE TABLE "{table}" ({", ".join(cols)})')
+        conn.execute('DROP TABLE IF EXISTS "_hxmeta"')
+        conn.execute('CREATE TABLE "_hxmeta" (field TEXT PRIMARY KEY, typ TEXT, w INTEGER, d INTEGER)')
+        for (fname, typ, ln, dc) in field_defs:
+            conn.execute('INSERT OR REPLACE INTO "_hxmeta" (field, typ, w, d) VALUES (?,?,?,?)', (fname, typ, ln, dc))
         conn.commit()
         conn.close()
         return db_path

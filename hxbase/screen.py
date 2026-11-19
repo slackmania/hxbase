@@ -4,6 +4,42 @@ ROW_COUNT = 25
 COL_COUNT = 80
 
 
+def _cell(v):
+    if v is None:
+        return ""
+    if isinstance(v, bool):
+        return ".T." if v else ".F."
+    if isinstance(v, float) and v.is_integer():
+        return str(int(v))
+    return str(v)
+
+
+def format_table(columns, rows, widths=None, max_col=30):
+    """Clipper-BROWSE szeru igazitas: fejlec es mezok azonos szelesseggel, monospace-hez."""
+    cols = [str(c) for c in columns]
+    strs = [[_cell(v) for v in r] for r in rows]
+    w = []
+    for i, c in enumerate(cols):
+        mx = len(c)
+        if widths and i < len(widths) and widths[i]:
+            mx = max(mx, min(int(widths[i]), max_col))
+        for r in strs:
+            if i < len(r):
+                mx = max(mx, min(len(r[i]), max_col))
+        w.append(max(1, min(mx, max_col)))
+
+    def fmt_row(r):
+        cells = []
+        for i in range(len(cols)):
+            v = r[i] if i < len(r) else ""
+            if len(v) > w[i]:
+                v = v[:w[i]]
+            cells.append(v.ljust(w[i]))
+        return "  ".join(cells).rstrip()
+
+    return [fmt_row(cols), "  ".join("-" * x for x in w)] + [fmt_row(r) for r in strs]
+
+
 def parse_color(spec, default_fg="white", default_bg="black"):
     """Clipper 'W/B,R/B' stilus: 'FG/BG'. Vissza: (fg, bg)."""
     if not spec:
@@ -51,9 +87,20 @@ class HeadlessScreen:
         self.colors = [[("white", "black")] * self.cols for _ in range(self.rows)]
         self.pending_gets = []
 
+    def scroll_up(self, n=1):
+        for _ in range(n):
+            self.buf.pop(0)
+            self.buf.append([" "] * self.cols)
+            self.colors.pop(0)
+            self.colors.append([("white", "black")] * self.cols)
+
     def say(self, row, col, text, color=None):
         fg, bg = parse_color(color) if color else ("white", "black")
-        r = max(0, min(self.rows - 1, int(row)))
+        r = int(row)
+        if r >= self.rows:
+            self.scroll_up(r - self.rows + 1)
+            r = self.rows - 1
+        r = max(0, r)
         c = max(0, min(self.cols - 1, int(col)))
         for i, ch in enumerate(str(text)):
             if c + i >= self.cols:
@@ -87,8 +134,10 @@ class HeadlessScreen:
         # headless: elso opcio
         return 1 if options else 0
 
-    def browse(self, alias, columns, rows):
+    def browse(self, alias, columns, rows, widths=None):
         self.browses.append((alias, columns, rows))
+        for line in format_table(columns, rows, widths):
+            self.list_out(line)
 
     def list_out(self, text):
         self.lists.append(text)
@@ -255,19 +304,18 @@ class GuiScreen(HeadlessScreen):
             pass
         return self.choice["v"]
 
-    def browse(self, alias, columns, rows):
-        super().browse(alias, columns, rows)
+    def browse(self, alias, columns, rows, widths=None):
+        super().browse(alias, columns, rows, widths)
         if self._closed:
             return
         import tkinter as tk
         win = tk.Toplevel(self.root)
         win.title(f"BROWSE — {alias}")
-        txt = tk.Text(win, width=min(100, 20 + len(columns) * 15),
-                      height=min(20, max(5, len(rows) + 2)), font=self.font)
+        txt = tk.Text(win, width=min(120, 10 + sum(min((widths[i] if widths and i < len(widths) else 10), 30) + 2 for i in range(len(columns)))),
+                      height=min(24, max(5, len(rows) + 4)), font=self.font)
         txt.pack(fill="both", expand=True)
-        txt.insert("end", " | ".join(columns) + "\n" + "-" * 60 + "\n")
-        for r in rows[:500]:
-            txt.insert("end", " | ".join("" if v is None else str(v) for v in r) + "\n")
+        for line in format_table(columns, rows[:500], widths):
+            txt.insert("end", line + "\n")
         tk.Button(win, text="Bezár", command=win.destroy).pack(pady=4)
 
     def list_out(self, text):

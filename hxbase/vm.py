@@ -115,7 +115,7 @@ class VM:
             # ? uj sor, ?? folytatas — MVP: mindig uj sor a kovetkezo ures sorba
             self.screen.say(self.qmark_row, 0, line)
             self.screen.list_out(line)
-            self.qmark_row = min(self.qmark_row + 1, 24)
+            self.qmark_row += 1
         elif t == "assign":
             v = self.ev(s["expr"])
             self.store_target(s["target"], v)
@@ -455,9 +455,13 @@ class VM:
         for _, row in area.order:
             if self.row_visible(area, row):
                 rows.append([row.get(c) for c in cols])
-        self.screen.browse(area.alias, cols, rows)
+        widths = [f[2] if len(f) > 2 else 10 for f in area.fields] or None
+        lcols = {f[0] for f in area.fields if f[1] == "L"}
+        rows = [[(bool(v) if c in lcols and v is not None else v) for c, v in zip(cols, r)] for r in rows]
+        self.screen.browse(area.alias, cols, rows, widths)
 
     def do_list(self, raw):
+        from .screen import format_table
         self.need_table()
         area = self.db.cur()
         area.refresh()
@@ -469,15 +473,20 @@ class VM:
             if m:
                 from .parser import ex as parse_ex
                 cond = parse_ex(m.group(1))
+        data = []
         for _, row in area.order:
             if not self.row_visible(area, row):
                 continue
             if cond is not None and not is_true(self.with_row(area, row, lambda: self.ev(cond))):
                 continue
-            line = " ".join(to_str(row.get(c)) for c in cols)
+            data.append([row.get(c) for c in cols])
+        widths = [f[2] if len(f) > 2 else 10 for f in area.fields] or None
+        lcols = {f[0] for f in area.fields if f[1] == "L"}
+        data = [[(bool(v) if c in lcols and v is not None else v) for c, v in zip(cols, r)] for r in data]
+        for line in format_table(cols, data, widths):
             self.screen.list_out(line)
             self.screen.say(self.qmark_row, 0, line)
-            self.qmark_row = min(self.qmark_row + 1, 24)
+            self.qmark_row += 1
 
     def do_index(self, expr_s, tag):
         self.need_table()
