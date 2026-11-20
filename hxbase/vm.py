@@ -381,6 +381,12 @@ class VM:
         if u.startswith("THEME "):
             self.screen.set_theme(raw.strip()[5:].strip())
             return
+        if u.startswith("TITLE TO"):
+            self.screen.set_title(raw.strip()[8:].strip().strip("\"'"))
+            return
+        if u.startswith("TITLE "):
+            self.screen.set_title(raw.strip()[5:].strip().strip("\"'"))
+            return
         if u.startswith("FILTER TO"):
             cond_s = raw[9:].strip()
             area = self.db.cur()

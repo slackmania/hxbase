@@ -14,13 +14,13 @@ from .screen import ConsoleScreen, HeadlessScreen
 from .vm import VM
 
 
-def make_screen(headless, gui=False, grid="80x25"):
+def make_screen(headless, gui=False, grid="80x25", title="HxBase GuiClipper"):
     if headless:
         return HeadlessScreen()
     if gui:
         try:
             from .guiscreen import GuiScreen
-            return GuiScreen(grid)
+            return GuiScreen(grid, title)
         except Exception as e:
             print(f"[hxbase] GUI nem indult ({e}), konzol mod.", file=sys.stderr)
     from .guiscreen import parse_grid
@@ -35,7 +35,7 @@ def cmd_run(args):
         src = f.read()
     from .compiler import compile_source
     pcode = compile_source(src)
-    screen = make_screen(args.headless, getattr(args, "gui", False), getattr(args, "grid", "80x25"))
+    screen = make_screen(args.headless, getattr(args, "gui", False), getattr(args, "grid", "80x25"), getattr(args, "title", "HxBase GuiClipper"))
     # peldaknal hasznos elore toltott GET-ertekek kornyezeti valtozobol? nem kell
     dbm = DBManager(base_dir)
     vm = VM(screen, dbm, base_dir)
@@ -73,7 +73,7 @@ def cmd_compile(args):
 def cmd_runpcode(args):
     pcode = load_pcode(args.pcode)
     base_dir = args.dir or (os.path.dirname(os.path.abspath(args.pcode)) or ".")
-    screen = make_screen(args.headless, getattr(args, "gui", False), getattr(args, "grid", "80x25"))
+    screen = make_screen(args.headless, getattr(args, "gui", False), getattr(args, "grid", "80x25"), getattr(args, "title", "HxBase GuiClipper"))
     dbm = DBManager(base_dir)
     vm = VM(screen, dbm, base_dir)
     try:
@@ -129,6 +129,15 @@ def _grid():
         elif a.startswith("--grid="):
             g = a.split("=", 1)[1]
     return os.environ.get("HXBASE_GRID", g)
+def _title():
+    args = sys.argv[1:]
+    t = "HxBase GuiClipper"
+    for i, a in enumerate(args):
+        if a == "--title" and i + 1 < len(args):
+            t = args[i + 1]
+        elif a.startswith("--title="):
+            t = a.split("=", 1)[1]
+    return os.environ.get("HXBASE_TITLE", t)
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))) if "__file__" in globals() and not getattr(sys, "frozen", False) else None
 from hxbase.screen import ConsoleScreen, HeadlessScreen
 from hxbase.db import DBManager
@@ -145,7 +154,7 @@ def _screen():
         return ConsoleScreen(rows, cols)
     try:
         from hxbase.guiscreen import GuiScreen
-        return GuiScreen(_grid())
+        return GuiScreen(_grid(), _title())
     except Exception as e:
         print("[hxbase] GUI nem indult (%s), konzol mod." % e)
         cols, rows = parse_grid(_grid())
@@ -199,7 +208,8 @@ if __name__ == "__main__":
             ins = subprocess.run([sys.executable, "-m", "pip", "install", "--quiet", "pyinstaller"], timeout=300)
             if ins.returncode != 0:
                 raise RuntimeError("pip install pyinstaller sikertelen")
-        cmd = [sys.executable, "-m", "PyInstaller", "--onefile", "--console", "--clean",
+        cmd = [sys.executable, "-m", "PyInstaller", "--onefile",
+               "--noconsole" if getattr(args, "windowed", False) else "--console", "--clean",
                "--name", os.path.splitext(os.path.basename(exe_out))[0],
                "--paths", dist_src,
                "--hidden-import", "hxbase",
@@ -242,6 +252,7 @@ def main(argv=None):
     r.add_argument("--headless", action="store_true")
     r.add_argument("--gui", action="store_true", help="GUIClipper mod (Tkinter)")
     r.add_argument("--grid", default="80x25", help="racsmeret: 80x25, 130x32, 155x48")
+    r.add_argument("--title", default="HxBase GuiClipper", help="fejlec cim")
     r.add_argument("--dir", default=None)
     r.set_defaults(fn=cmd_run)
     c = sub.add_parser("compile", help=".prg -> .pcode")
@@ -253,11 +264,13 @@ def main(argv=None):
     rp.add_argument("--headless", action="store_true")
     rp.add_argument("--gui", action="store_true", help="GUIClipper mod (Tkinter)")
     rp.add_argument("--grid", default="80x25", help="racsmeret: 80x25, 130x32, 155x48")
+    rp.add_argument("--title", default="HxBase GuiClipper", help="fejlec cim")
     rp.add_argument("--dir", default=None)
     rp.set_defaults(fn=cmd_runpcode)
     b = sub.add_parser("build", help=".prg -> hordozhato .exe (p-kod beagyazva)")
     b.add_argument("prog")
     b.add_argument("-o", default=None)
+    b.add_argument("--windowed", action="store_true", help="terminal ablak nelkuli GUI exe (--noconsole)")
     b.set_defaults(fn=cmd_build)
     args = ap.parse_args(argv)
     args.fn(args)

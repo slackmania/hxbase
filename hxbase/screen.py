@@ -208,6 +208,10 @@ class HeadlessScreen:
         self.lists = []
         self.inputs = {}  # varname.upper() -> value | [ertekek sorban]
         self.theme = list(THEMES["ALAP"])
+        self.title = "HxBase"
+
+    def set_title(self, title):
+        self.title = str(title or "HxBase")
 
     def set_theme(self, name):
         self.theme = list(THEMES.get(str(name or "").strip().upper(), THEMES["ALAP"]))

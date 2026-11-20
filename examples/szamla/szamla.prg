@@ -3,6 +3,7 @@
 * Futtatas: python -m hxbase run examples\szamla\szamla.prg
 
 CLEAR
+SET TITLE TO "Számlázó Rendszer 2026 - GuiClipper"
 SET THEME TO KEK
 DO adatbazis()
 DO fomenu()
