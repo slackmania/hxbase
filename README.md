@@ -15,12 +15,27 @@ Parancsok:
 | parancs | mit csinál |
 |---|---|
 | `python -m hxbase run app.prg [--headless]` | `.prg` futtatása szöveges konzolon (vagy headless, kimenet-csövezéshez) |
+| `python -m hxbase run app.prg --gui [--grid 130x32]` | GUIClipper: ugyanez a `.prg` rendes GUI-n (Entry/Checkbutton/Radiobutton/Button, Listbox menü, Treeview BROWSE). Rács: `80x25`, `130x32`, `155x48` |
 | `python -m hxbase compile app.prg -o app.pcode` | fordítás hordozható p-kódra (JSON) |
 | `python -m hxbase runpcode app.pcode [--headless]` | p-kód futtatása (a futtató önmagában) |
 | `python -m hxbase build app.prg -o dist\app.exe` | p-kód + runtime beágyazása → önálló `.exe` (PyInstallerrel), fallback: hordozható mappa |
 | `build.bat forras.prg [kimenet.exe]` | ugyanez egy paranccsal, pl. `build.bat examples\teszt50.prg` → `dist\teszt50.exe` |
 
 Az exe hordozható: a `.db` fájlokat az exe mellé (vagy a `HXBASE_DIR` mappába) teszi, nincs szükség telepített Pythonra. Fejlesztéshez `run`, terjesztéshez `build`.
+
+## GUIClipper
+
+Ugyanaz a nyelv és VM, rendes GUI-frontenddel (`hxbase/guiscreen.py`). A `.prg`-k változtatás nélkül futnak, minden koordináta az eredeti szerint értendő:
+
+- rácsok: `80x25` (eredeti), `130x32` (kiterjesztett), `155x48` (extrém) — `--grid` kapcsolóval vagy `HXBASE_GRID` környezeti változóval,
+- `READ` = valódi űrlap (Entry, Checkbutton, Radiobutton, akciógombok), `MENU` = Listbox, `MSGBOX`/`WAIT` = üzenetablak, `BROWSE` = görgethető táblázat (Treeview), `ACCEPT`/`INPUT` = beviteli dialógus,
+- az exe GUI-első: induláskor GUI-t próbál (`--headless` / `HXBASE_HEADLESS=1` kényszerít konzolt, `--console` / `HXBASE_GUI=0` tiltja a GUI-t), kijelző nélkül automatikusan konzolra esik vissza.
+
+```bat
+python -m hxbase run examples\widgets.prg --gui --grid 130x32
+build.bat examples\szamla\szamla.prg
+dist\szamla.exe --grid 155x48
+```
 
 ## Számlázó mintaalkalmazás
 

@@ -9,7 +9,7 @@ dBaseIII/Clipper-érzés: procedurális, workarea-alapú, `USE/SKIP/REPLACE`, `@
 - Folytatósor: sor végi `;`. Több utasítás egy sorban: `;` elválasztó (stringen kívül).
 - Operátorok: `+ - * / % ^`, `= == <> != # < > <= >=`, `$` (tartalmaz), `.AND. .OR. .NOT.`.
 
-## 3. Képernyő
+## 3. Képernyő (szöveges konzol + GUIClipper)
 - `CLEAR [SCREEN]`, `SET COLOR TO "W/B"`.
 - `@ r,c SAY kif [COLOR c]`, `@ r,c GET var [PICTURE p]` (`"@!"` = nagybetűsít), `READ`.
 - Widgetek, DOS-emulációval (nincs valódi GUI-widget, nincs terminál-echo/előzmény): `READ`-kor a program elmenti a háttér celláit a memóriába, keretes dialógust rajzol a rácsra, nyers billentyűkkel kezel (fel/le nyíl soha nem olvas vissza előzményt, kurzor a rácson villog a szerkesztett pozícióban):
@@ -19,6 +19,7 @@ dBaseIII/Clipper-érzés: procedurális, workarea-alapú, `USE/SKIP/REPLACE`, `@
   - `TAB`/`Shift+Tab`/fel/le: séta a mezőkön és gombokon (caption kivételével mindenen megáll), bal/jobb: mezőn belül mozgat, `Enter`: tovább/OK, `Ctrl+W`: kész (OK) bárhonnan, `Esc`: elvetés. `GET`-mezőben gépelés, `Backspace`, `Home/End` működik.
   - `MENU` (nyilak+`Enter`/sorszám), `MSGBOX`, `WAIT`, `ACCEPT`/`INPUT`, `BROWSE`-lapozás (`Q` kilép) szintén nyers billentyűs; pipe-olt (nem-tty) stdin esetén soronkénti beolvasás.
 - `? kif [, ...]`, `MENU "a,b,c" TO v [TITLE t]`, `BROWSE`, `MSGBOX(kif)`, `WAIT`, `ACCEPT [TO v] [PROMPT p]`, `INPUT`.
+- GUIClipper (`--gui`, `hxbase/guiscreen.py`): ugyanez a nyelv, rendes widgetekkel. Rácsok: `80x25`, `130x32`, `155x48` (`--grid`, exe-nél is). `READ` = űrlap (Entry/Checkbutton/Radiobutton/Button + OK/Megse), `MENU` = Listbox, `MSGBOX`/`WAIT` = üzenetablak, `BROWSE` = Treeview táblázat görgetősávokkal, `ACCEPT`/`INPUT` = beviteli dialógus. Kijelző nélkül automatikus konzol-fallback.
 
 ## 4. Adatbázis (SQLite)
 - Fájl: `<tabla>.db`, benne `<tabla>` tábla + `_recno`, `_deleted` oszlopok.
