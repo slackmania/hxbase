@@ -25,7 +25,7 @@ def _cell(v):
     return str(v)
 
 
-def format_table(columns, rows, widths=None, max_col=30):
+def format_table(columns, rows, widths=None, max_col=50):
     """Clipper-BROWSE szeru igazitas: fejlec es mezok azonos szelesseggel, monospace-hez."""
     cols = [str(c) for c in columns]
     strs = [[_cell(v) for v in r] for r in rows]
@@ -367,6 +367,10 @@ class HeadlessScreen:
 
     def list_out(self, text):
         self.lists.append(text)
+
+    def list_lines(self, lines):
+        for ln in lines:
+            self.list_out(ln)
 
     def wait(self, msg=""):
         self.messages.append(("", msg))
@@ -895,6 +899,12 @@ class ConsoleScreen(HeadlessScreen):
                 k = self._wait_key("-- tovabb (barmi), vege (Q): ")
                 if isinstance(k, str) and k.strip().upper() == "Q":
                     break
+
+    def list_lines(self, lines):
+        # LIST: teljes szelessegben nyomtat (a 80-as racs levagna).
+        HeadlessScreen.list_lines(self, lines)
+        for ln in lines:
+            print(ln)
 
     def prompt_user(self, text):
         if text:

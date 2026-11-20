@@ -26,7 +26,7 @@ Az exe hordozható: a `.db` fájlokat az exe mellé (vagy a `HXBASE_DIR` mappáb
 
 `examples/szamla/szamla.prg` — komplett rendszer a nyelvben írva:
 
-- automatikus sorszám (`yxas-YYYY/nnnnnn` számla/storno, `SZ-YYYY/nnnnnn` szállító),
+- automatikus sorszám (`yxas-YYYY/nnnnnn` számla/storno, `SZ-YYYY/nnnnnn` szállító, `Vnnnnn` vevő, `Cnnnnn` cikk — minden új kód automatikus, semmit sem kell fejben tartani),
 - vevők, cikkek, cégadatok, súlyozott átlagáras raktár (bevét: `új átlagár = (régi készlet×régi ár + bevételezett×ár) / új készlet`),
 - szállítólevél készítés készletfogyással, számla a szállítóból (dupla számlázás védelemmel), storno negatív tételekkel + készlet-visszatétellel (dupla storno védelemmel),
 - magyar kötelező tartalom (eladó/vevő+adószám, kelt/telj/fizhat, fizetési mód, tételenkénti áfa, összesítők), `PDFSTART/PDFSOR/.../PDFMENT`-tel PDF-be nyomtatható,

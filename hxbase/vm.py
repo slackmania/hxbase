@@ -626,10 +626,9 @@ class VM:
         widths = [f[2] if len(f) > 2 else 10 for f in area.fields] or None
         lcols = {f[0] for f in area.fields if f[1] == "L"}
         data = [[(bool(v) if c in lcols and v is not None else v) for c, v in zip(cols, r)] for r in data]
-        for line in format_table(cols, data, widths):
-            self.screen.list_out(line)
-            self.screen.say(self.qmark_row, 0, line)
-            self.qmark_row += 1
+        lines = format_table(cols, data, widths)
+        self.screen.list_lines(lines)
+        self.qmark_row += len(lines)
 
     def do_index(self, expr_s, tag):
         self.need_table()

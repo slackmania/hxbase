@@ -31,7 +31,7 @@ DO szamla_keszit()
 """
 
 INPUTS = {
-    "M_KOD": ["V001", "CK001", "CK001"],
+    "M_KOD": ["C00001"],
     "M_NEV": ["Teszt Vevo Kft", "Teszt Cikk"],
     "M_CIM": ["1234 Budapest, Fo u. 1."],
     "M_ADO": ["12345678-1-11"],
@@ -40,9 +40,9 @@ INPUTS = {
     "M_AFA": ["27"],
     "M_MENNY": ["10", "2"],
     "M_AR": ["800"],
-    "M_VEVO": ["V001"],
+    "M_VEVO": ["V00001"],
     "M_MEGJ": ["teszt szallitas"],
-    "M_CIKK": ["CK001"],
+    "M_CIKK": ["C00001"],
     "M_FIZMOD": ["Atutalas", "Atutalas"],
     "M_SZALL": ["", SZALL_NO],
     "M_SZAM": ["", "", STORNO_NO],
@@ -78,10 +78,10 @@ def q(tmp, db, sql):
 def test_szamla_flow():
     tmp, sc = run_flow()
     # vevo + cikk + sulyozott atlagar (10 db * 800)
-    assert q(tmp, "vevo.db", "SELECT kod, nev FROM vevo") == [("V001", "Teszt Vevo Kft")]
+    assert q(tmp, "vevo.db", "SELECT kod, nev FROM vevo") == [("V00001", "Teszt Vevo Kft")]
     cikk = q(tmp, "cikk.db", "SELECT kod, keszlet, atlagar, eladar, afa FROM cikk")
     assert len(cikk) == 1
-    assert cikk[0][0] == "CK001"
+    assert cikk[0][0] == "C00001"
     assert cikk[0][2] == 800.0  # sulyozott atlagar
     # szallito: szamlazva, osszeg 2*1000
     sz = q(tmp, "szall.db", "SELECT szam, szamlazva, osszeg FROM szall")
@@ -97,7 +97,7 @@ def test_szamla_flow():
     # keszlet vissza: 10 - 2 + 2
     assert q(tmp, "cikk.db", "SELECT keszlet FROM cikk") == [(10.0,)]
     # sorszamok
-    assert q(tmp, "sorszam.db", "SELECT tip, utolso FROM sorszam ORDER BY tip") == [("S", 2), ("Z", 1)]
+    assert q(tmp, "sorszam.db", "SELECT tip, utolso FROM sorszam ORDER BY tip") == [("C", 1), ("S", 2), ("V", 1), ("Z", 1)]
     # PDF-ek
     for name in ("yxas-" + YEAR + "-000001.pdf", "yxas-" + YEAR + "-000002.pdf", "SZ-" + YEAR + "-000001.pdf"):
         p = os.path.join(tmp, name)

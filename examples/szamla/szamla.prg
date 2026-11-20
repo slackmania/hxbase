@@ -101,6 +101,12 @@ FUNCTION ujszam(m_tip)
     USE sorszam
   ENDTRY
   m_ev = SUBSTR(DATE(), 1, 4)
+  IF m_tip = "V"
+    m_ev = "0000"
+  ENDIF
+  IF m_tip = "C"
+    m_ev = "0000"
+  ENDIF
   LOCATE FOR EV = m_ev .AND. TIP = m_tip
   IF EOF()
     APPEND BLANK
@@ -111,7 +117,15 @@ FUNCTION ujszam(m_tip)
   IF m_tip = "S"
     m_kesz = "yxas-" + m_ev + "/" + PADL(STR(m_uj), 6, "0")
   ELSE
-    m_kesz = "SZ-" + m_ev + "/" + PADL(STR(m_uj), 6, "0")
+    IF m_tip = "Z"
+      m_kesz = "SZ-" + m_ev + "/" + PADL(STR(m_uj), 6, "0")
+    ELSE
+      IF m_tip = "V"
+        m_kesz = "V" + PADL(STR(m_uj), 5, "0")
+      ELSE
+        m_kesz = "C" + PADL(STR(m_uj), 5, "0")
+      ENDIF
+    ENDIF
   ENDIF
   CLOSE ALL
 RETURN m_kesz
@@ -199,16 +213,15 @@ RETURN
 
 FUNCTION vevo_fel()
   SET THEME TO ZOLD
+  m_kod = ujszam("V")
   CLOSE ALL
   USE vevo
   CLEAR
-  @ 2,10 SAY "Vevo felvitele"
-  m_kod = ""
+  @ 2,10 SAY "Vevo felvitele (kod automatikus)"
+  @ 4,10 SAY "Kod: " + m_kod
   m_nev = ""
   m_cim = ""
   m_ado = ""
-  @ 4,10 SAY "Kod:"
-  @ 4,16 GET m_kod PICTURE "@!"
   @ 5,10 SAY "Nev:"
   @ 5,16 GET m_nev
   @ 6,10 SAY "Cim:"
@@ -216,14 +229,8 @@ FUNCTION vevo_fel()
   @ 7,10 SAY "Adoszam:"
   @ 7,20 GET m_ado
   READ
-  IF EMPTY(m_kod)
-    MSGBOX("Ures kod - nincs rogzitve")
-    RETURN
-  ENDIF
-  LOCATE FOR KOD = m_kod
-  IF .NOT. EOF()
-    m_uzen = "Mar letezik: " + m_kod
-    MSGBOX(m_uzen)
+  IF EMPTY(m_nev)
+    MSGBOX("Ures nev - nincs rogzitve")
     RETURN
   ENDIF
   APPEND BLANK
@@ -254,17 +261,16 @@ RETURN
 
 FUNCTION cikk_fel()
   SET THEME TO ZOLD
+  m_kod = ujszam("C")
   CLOSE ALL
   USE cikk
   CLEAR
-  @ 2,10 SAY "Cikk felvitele"
-  m_kod = ""
+  @ 2,10 SAY "Cikk felvitele (kod automatikus)"
+  @ 4,10 SAY "Kod: " + m_kod
   m_nev = ""
   m_me = ""
   m_elad = ""
   m_afa = ""
-  @ 4,10 SAY "Kod:"
-  @ 4,16 GET m_kod PICTURE "@!"
   @ 5,10 SAY "Nev:"
   @ 5,16 GET m_nev
   @ 6,10 SAY "Me:"
@@ -274,14 +280,8 @@ FUNCTION cikk_fel()
   @ 8,10 SAY "AFA %:"
   @ 8,22 GET m_afa
   READ
-  IF EMPTY(m_kod)
-    MSGBOX("Ures kod - nincs rogzitve")
-    RETURN
-  ENDIF
-  LOCATE FOR KOD = m_kod
-  IF .NOT. EOF()
-    m_uzen = "Mar letezik: " + m_kod
-    MSGBOX(m_uzen)
+  IF EMPTY(m_nev)
+    MSGBOX("Ures nev - nincs rogzitve")
     RETURN
   ENDIF
   IF EMPTY(m_me)

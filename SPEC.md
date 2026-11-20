@@ -28,7 +28,7 @@ dBaseIII/Clipper-érzés: procedurális, workarea-alapú, `USE/SKIP/REPLACE`, `@
 - Írás: `APPEND BLANK`, `REPLACE m WITH kif [, ...]`, `mezo = kif` (mezőre ír ha nincs ilyen memvar), `DELETE [FOR f]` / `RECALL` / `PACK` / `ZAP`.
 - Összesítés: `SUM kif TO valto [FOR felt]`, `AVERAGE kif TO valto [FOR felt]`, `COUNT TO valto [FOR felt]`.
 - Rendezés/másolás: `SORT TO ujtab ON mezo [/D] [FOR felt]`, `COPY TO fajl DELIMITED`, `APPEND FROM fajl DELIMITED`.
-- `SET FILTER TO felt`, `SET DELETED ON|OFF`, `INDEX ON mezo TO tag`, `SQL "SELECT..."`, `LIST [FOR f]`.
+- `SET FILTER TO felt`, `SET DELETED ON|OFF`, `INDEX ON mezo TO tag`, `SQL "SELECT..."`, `LIST [FOR f]` (a `LIST` teljes szélességben nyomtat, nem vágja le a 80-as rács).
 
 ## 5. Vezérlés + alprogram
 `IF [cond] ... [ELSEIF cond] ... [ELSE] ... ENDIF`, `DO WHILE cond ... ENDDO`, `FOR v = a TO b [STEP s] ... NEXT`, `DO CASE [CASE cond] ... [OTHERWISE] ... ENDCASE`, `EXIT LOOP`, `FUNCTION nev([args]) ... RETURN [kif]` (a `PROCEDURE` alias), `DO nev([args])`, `TRY ... CATCH ... ENDTRY` (`ERROR` memvarba ír).
