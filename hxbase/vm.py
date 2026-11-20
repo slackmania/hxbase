@@ -72,6 +72,8 @@ class VM:
         self.locate_pos = 0
         self.qmark_row = 0
         self.call_depth = 0
+        self._pdf = None
+        self._pdf_file = ""
 
     # ---------- program ----------
     def run_code(self, stmts):
@@ -373,6 +375,12 @@ class VM:
 
     def do_set(self, raw):
         u = raw.strip().upper()
+        if u.startswith("THEME TO"):
+            self.screen.set_theme(raw.strip()[8:].strip())
+            return
+        if u.startswith("THEME "):
+            self.screen.set_theme(raw.strip()[5:].strip())
+            return
         if u.startswith("FILTER TO"):
             cond_s = raw[9:].strip()
             area = self.db.cur()
@@ -675,6 +683,8 @@ class VM:
                     self.exec_list(fn["body"])
                 except RetExc as r:
                     return r.value
+                if fn.get("ret") is not None:
+                    return self.ev(fn["ret"])
                 return None
             finally:
                 # args torlese, egyeb memvar megmarad (Clipper PUBLIC-szeru)
@@ -901,6 +911,27 @@ class VM:
             sub = to_str(a[0] if a else "").upper()
             s = to_str(a[1] if len(a) > 1 else "").upper()
             return s.rfind(sub) + 1
+        if name in ("STRTRAN", "STRTRANSLATE"):
+            s = to_str(a[0] if a else "")
+            old = to_str(a[1]) if len(a) > 1 else ""
+            new = to_str(a[2]) if len(a) > 2 else ""
+            return s.replace(old, new) if old else s
+        if name in ("HFMT",):
+            # magyar penzformatum: ezres szokoz, tizedes vesszo
+            try:
+                v = float(to_num(a[0] if a else 0))
+            except Exception:
+                v = 0.0
+            d = int(to_num(a[1]) if len(a) > 1 else 2)
+            s = f"{v:,.{d}f}"
+            return s.replace(",", " ").replace(".", ",")
+        if name in ("DADD", "DATEADD"):
+            from datetime import timedelta
+            s = to_str(a[0] if a else "")[:10]
+            try:
+                return (date.fromisoformat(s) + timedelta(days=int(to_num(a[1]) if len(a) > 1 else 0))).isoformat()
+            except Exception:
+                return to_str(a[0] if a else "")
         if name in ("TRANSFORM",):
             v = a[0] if a else ""
             pic = to_str(a[1]).upper() if len(a) > 1 else ""
@@ -941,6 +972,45 @@ class VM:
         if name in ("DBFNAME", "DBF", "ALIASNAME"):
             cur = self.db.cur()
             return (cur.db_path if cur else "")
+        if name in ("PDFSTART",):
+            from .pdf import PdfDoc
+            self._pdf = PdfDoc()
+            self._pdf_file = to_str(a[0] if a else "dok.pdf")
+            return self._pdf_file
+        if name in ("PDFCIM",):
+            self._need_pdf()
+            self._pdf.title(to_str(a[0] if a else ""))
+            return 1
+        if name in ("PDFFEJL", "PDFHEAD"):
+            self._need_pdf()
+            self._pdf.head(to_str(a[0] if a else ""))
+            return 1
+        if name in ("PDFSOR", "PDFLINE"):
+            self._need_pdf()
+            self._pdf.line(to_str(a[0] if a else ""))
+            return 1
+        if name in ("PDFVONAL",):
+            self._need_pdf()
+            self._pdf.sep()
+            return 1
+        if name in ("PDFOLDAL", "PDFPAGE"):
+            self._need_pdf()
+            self._pdf.page()
+            return 1
+        if name in ("PDFMENT", "PDFSAVE"):
+            import os as _os
+            self._need_pdf()
+            fname = self._pdf_file or "dok.pdf"
+            if not _os.path.isabs(fname):
+                fname = _os.path.join(self.base_dir, fname)
+            self._pdf.build(fname)
+            self._pdf = None
+            self.screen.list_out("PDF kesz: " + fname)
+            return fname
         if name in ("INKEY", "LASTKEY"):
             return 0
         raise RuntimeError(f"Ismeretlen fuggveny: {name}")
+
+    def _need_pdf(self):
+        if getattr(self, "_pdf", None) is None:
+            raise RuntimeError("PDFSTART nelkul nincs PDF (PDFSTART fajl)")

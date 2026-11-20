@@ -9,10 +9,28 @@ FIELD_RE = re.compile(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s+([CNDLM])\s*(?:\(\s*(\d+)
 SQLITE_TYPE = {"C": "TEXT", "M": "TEXT", "D": "TEXT", "L": "INTEGER", "N": "REAL"}
 
 
+def _split_fields(defs_str):
+    parts, cur, depth = [], [], 0
+    for ch in defs_str:
+        if ch in "([":
+            depth += 1
+            cur.append(ch)
+        elif ch in ")]":
+            depth = max(0, depth - 1)
+            cur.append(ch)
+        elif ch == "," and depth == 0:
+            parts.append("".join(cur))
+            cur = []
+        else:
+            cur.append(ch)
+    parts.append("".join(cur))
+    return parts
+
+
 def parse_field_defs(defs_str):
     """'NEV C(30), KOR N(3,0), SZUL D, AKTIV L' -> [(nev,tipus,hossz,tizedes)]"""
     out = []
-    for part in defs_str.split(","):
+    for part in _split_fields(defs_str):
         part = part.strip()
         if not part:
             continue

@@ -3,6 +3,17 @@
 ROW_COUNT = 25
 COL_COUNT = 80
 
+# Izleses, visszafogott temak: keruljuk a harsany parositasokat
+# (pl. sarga zoldon, fekete keken). Csak ezek valaszthatoak.
+THEMES = {
+    "ALAP": ("white", "black"),
+    "KEK": ("white", "blue"),
+    "ZOLD": ("white", "green"),
+    "BORDO": ("white", "red"),
+    "SZURKE": ("black", "gray"),
+    "EJSZAKA": ("yellow", "black"),
+}
+
 
 def _cell(v):
     if v is None:
@@ -195,7 +206,19 @@ class HeadlessScreen:
         self.menus = []
         self.browses = []
         self.lists = []
-        self.inputs = {}  # varname.upper() -> value (elore beadott teszt-input)
+        self.inputs = {}  # varname.upper() -> value | [ertekek sorban]
+        self.theme = list(THEMES["ALAP"])
+
+    def set_theme(self, name):
+        self.theme = list(THEMES.get(str(name or "").strip().upper(), THEMES["ALAP"]))
+
+    def _take_input(self, key, default):
+        if key in self.inputs:
+            v = self.inputs[key]
+            if isinstance(v, list):
+                return v.pop(0) if v else default
+            return v
+        return default
 
     def clear(self):
         self.buf = [[" "] * self.cols for _ in range(self.rows)]
@@ -247,18 +270,18 @@ class HeadlessScreen:
         for g in self.pending_gets:
             kind = g.get("kind", "get")
             if kind == "get":
-                v = self.inputs.get(g["var"].upper(), memvars.get(g["var"].upper(), ""))
+                v = self._take_input(g["var"].upper(), memvars.get(g["var"].upper(), ""))
                 v = self._apply_picture(v, g.get("picture"))
                 memvars[g["var"].upper()] = v
                 self.say(g["row"], g["col"], str(v))
             elif kind == "checkbox":
-                raw = self.inputs.get(g["var"].upper(), memvars.get(g["var"].upper(), False))
+                raw = self._take_input(g["var"].upper(), memvars.get(g["var"].upper(), False))
                 v = raw if isinstance(raw, bool) else (str(raw).strip().upper() in (".T.", "T", "Y", "1", "IGEN", "I", "TRUE"))
                 memvars[g["var"].upper()] = v
                 self.say(g["row"], g["col"], ("[X] " if v else "[ ] ") + str(g.get("prompt") or g["var"]))
             elif kind == "radio":
                 opts = g.get("options") or []
-                raw = self.inputs.get(g["var"].upper(), memvars.get(g["var"].upper(), 1))
+                raw = self._take_input(g["var"].upper(), memvars.get(g["var"].upper(), 1))
                 try:
                     v = int(raw)
                 except Exception:
@@ -440,7 +463,17 @@ class ConsoleScreen(HeadlessScreen):
             return "%s: < %s >" % (g.get("title") or g["var"], cur)
         return "[ %s ]" % g.get("label")
 
+    def _th(self):
+        t = getattr(self, "theme", None) or ["white", "black"]
+        return (t[0], t[1])
+
+    def _th_inv(self):
+        fg, bg = self._th()
+        return (bg, fg)
+
     def _draw_dialog(self, focus, edits, cur_idx, title, hint):
+        fg, bg = self._th()
+        ifg, ibg = self._th_inv()
         texts = [self._dialog_content(g, edits) for g in focus]
         r1, c1, r2, c2, w = self._dialog_geom(texts)
         saved = self.save_region(r1, c1, r2, c2)
@@ -448,10 +481,10 @@ class ConsoleScreen(HeadlessScreen):
         for i, g in enumerate(focus):
             t = texts[i][:w - 4].ljust(w - 4)
             if i == cur_idx:
-                self._put(r1 + 2 + i, c1 + 2, t, "black", "white")
+                self._put(r1 + 2 + i, c1 + 2, t, ifg, ibg)
             else:
-                self._put(r1 + 2 + i, c1 + 2, t, "white", "black")
-        self._put(r2 - 1, c1 + max(1, (w - len(hint)) // 2), hint[:w - 2], "black", "white")
+                self._put(r1 + 2 + i, c1 + 2, t, fg, bg)
+        self._put(r2 - 1, c1 + max(1, (w - len(hint)) // 2), hint[:w - 2], ifg, ibg)
         self._render()
         return saved, r1, c1, r2, c2, w
 
@@ -466,10 +499,12 @@ class ConsoleScreen(HeadlessScreen):
         r1, c1, r2, c2, w = self._dialog_geom(texts)
         saved = self.save_region(r1, c1, r2, c2)
         self.draw_box(r1, c1, r2, c2, "Adatbevitel")
+        fg, bg = self._th()
+        ifg, ibg = self._th_inv()
         for i, t in enumerate(texts):
-            self._put(r1 + 2 + i, c1 + 2, t[:w - 4].ljust(w - 4), "white", "black")
+            self._put(r1 + 2 + i, c1 + 2, t[:w - 4].ljust(w - 4), fg, bg)
         hint = "ures sor = marad"
-        self._put(r2 - 1, c1 + max(1, (w - len(hint)) // 2), hint[:w - 2], "black", "white")
+        self._put(r2 - 1, c1 + max(1, (w - len(hint)) // 2), hint[:w - 2], ifg, ibg)
         self._render()
         for g in focus:
             kind = g.get("kind", "get")
@@ -553,14 +588,16 @@ class ConsoleScreen(HeadlessScreen):
                     memvars[var.upper()] = edits[var]
 
         def render():
+            fg, bg = self._th()
+            ifg, ibg = self._th_inv()
             texts = [self._dialog_content(g, edits) for g in focus]
             for i, t in enumerate(texts):
                 t = t[:w - 4].ljust(w - 4)
                 if i == cur["i"]:
-                    self._put(r1 + 2 + i, c1 + 2, t, "black", "white")
+                    self._put(r1 + 2 + i, c1 + 2, t, ifg, ibg)
                 else:
-                    self._put(r1 + 2 + i, c1 + 2, t, "white", "black")
-            self._put(r2 - 1, c1 + max(1, (w - len(hint)) // 2), hint[:w - 2], "black", "white")
+                    self._put(r1 + 2 + i, c1 + 2, t, fg, bg)
+            self._put(r2 - 1, c1 + max(1, (w - len(hint)) // 2), hint[:w - 2], ifg, ibg)
             self._render()
             g = focus[cur["i"]]
             if g.get("kind", "get") == "get":
@@ -758,14 +795,16 @@ class ConsoleScreen(HeadlessScreen):
 
     def message(self, text, title=""):
         super().message(text, title)
+        fg, bg = self._th()
+        ifg, ibg = self._th_inv()
         lines = str(text).splitlines() or [""]
         r1, c1, r2, c2, w = self._dialog_geom(lines + [str(title or "")])
         saved = self.save_region(r1, c1, r2, c2)
         self.draw_box(r1, c1, r2, c2, str(title or "HxBase"))
         for i, ln in enumerate(lines):
-            self._put(r1 + 2 + i, c1 + 3, ln[:w - 6], "white", "black")
+            self._put(r1 + 2 + i, c1 + 3, ln[:w - 6], fg, bg)
         ok = "[ OK - Enter ]"
-        self._put(r1 + 2 + len(lines), c1 + 2, ok.ljust(w - 4), "black", "white")
+        self._put(r1 + 2 + len(lines), c1 + 2, ok.ljust(w - 4), ifg, ibg)
         self._render()
         self._wait_key()
         self.restore_region(saved)
@@ -784,12 +823,14 @@ class ConsoleScreen(HeadlessScreen):
         sel = {"i": 0}
 
         def render():
+            fg, bg = self._th()
+            ifg, ibg = self._th_inv()
             for i, t in enumerate(numbered):
                 t = ("> " + t if i == sel["i"] else "  " + t)[:w - 4].ljust(w - 4)
                 if i == sel["i"]:
-                    self._put(r1 + 2 + i, c1 + 2, t, "black", "white")
+                    self._put(r1 + 2 + i, c1 + 2, t, ifg, ibg)
                 else:
-                    self._put(r1 + 2 + i, c1 + 2, t, "white", "black")
+                    self._put(r1 + 2 + i, c1 + 2, t, fg, bg)
             self._render()
 
         if not _stdin_is_tty():

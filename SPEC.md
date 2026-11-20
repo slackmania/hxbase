@@ -34,7 +34,10 @@ dBaseIII/Clipper-érzés: procedurális, workarea-alapú, `USE/SKIP/REPLACE`, `@
 `IF [cond] ... [ELSEIF cond] ... [ELSE] ... ENDIF`, `DO WHILE cond ... ENDDO`, `FOR v = a TO b [STEP s] ... NEXT`, `DO CASE [CASE cond] ... [OTHERWISE] ... ENDCASE`, `EXIT LOOP`, `FUNCTION nev([args]) ... RETURN [kif]` (a `PROCEDURE` alias), `DO nev([args])`, `TRY ... CATCH ... ENDTRY` (`ERROR` memvarba ír).
 
 ## 6. Beépített függvények
-`UPPER LOWER ALLTRIM LTRIM RTRIM LEN SUBSTR LEFT RIGHT AT STR VAL CHR ASC DATE TIME YEAR MONTH DAY DTOC CTOD IIF EMPTY INT ROUND ABS MIN MAX EOF BOF RECNO RECCOUNT DELETED ALIAS FILE INKEY JSONSTRING JSONPARSE HTTPGET MSGBOX REPLICATE SPACE PADL PADR PADC STUFF RAT TRANSFORM DTOS VALTYPE FCOUNT FIELDNAME DBFNAME`.
+`UPPER LOWER ALLTRIM LTRIM RTRIM LEN SUBSTR LEFT RIGHT AT STR VAL CHR ASC DATE TIME YEAR MONTH DAY DTOC CTOD DTOS DADD IIF EMPTY INT ROUND ABS MIN MAX EOF BOF RECNO RECCOUNT DELETED ALIAS FILE INKEY JSONSTRING JSONPARSE HTTPGET MSGBOX REPLICATE SPACE PADL PADR PADC STUFF RAT TRANSFORM HFMT STRTRAN VALTYPE FCOUNT FIELDNAME DBFNAME`.
+- Dátum-matekozás: `DADD(datum, nap)` ISO-dátumra. Magyar pénzformátum: `HFMT(ertek [, tizedes])` → `1 234,50`. Szövegcsere: `STRTRAN(s, keres, csere)`.
+- Témaszínek (csak visszafogott párosítások): `SET THEME TO ALAP|KEK|ZOLD|BORDO|SZURKE|EJSZAKA` — dialógusok, menük, üzenetek színét adja; harsány kombináció nem választható.
+- PDF-nyomtatás (stdlib-only, beágyazott): `PDFSTART(fajl)`, `PDFCIM(sor)`, `PDFFEJL(sor)`, `PDFSOR(sor)`, `PDFVONAL()`, `PDFOLDAL()`, `PDFMENT()` → fájl a program mappájába. Példa: `examples/szamla/szamla.prg` (komplett számlázó: vevő, súlyozott raktár, szállítólevél, számla, storno, PDF).
 
 ## 7. p-kód + exe
 - `compile` a parse-olt AST-t JSON-ba menti (`{version, code}`).

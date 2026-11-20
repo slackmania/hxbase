@@ -22,6 +22,21 @@ Parancsok:
 
 Az exe hordozható: a `.db` fájlokat az exe mellé (vagy a `HXBASE_DIR` mappába) teszi, nincs szükség telepített Pythonra. Fejlesztéshez `run`, terjesztéshez `build`.
 
+## Számlázó mintaalkalmazás
+
+`examples/szamla/szamla.prg` — komplett rendszer a nyelvben írva:
+
+- automatikus sorszám (`yxas-YYYY/nnnnnn` számla/storno, `SZ-YYYY/nnnnnn` szállító),
+- vevők, cikkek, cégadatok, súlyozott átlagáras raktár (bevét: `új átlagár = (régi készlet×régi ár + bevételezett×ár) / új készlet`),
+- szállítólevél készítés készletfogyással, számla a szállítóból (dupla számlázás védelemmel), storno negatív tételekkel + készlet-visszatétellel (dupla storno védelemmel),
+- magyar kötelező tartalom (eladó/vevő+adószám, kelt/telj/fizhat, fizetési mód, tételenkénti áfa, összesítők), `PDFSTART/PDFSOR/.../PDFMENT`-tel PDF-be nyomtatható,
+- minden ablak más, visszafogott témaszínnel (`SET THEME TO KEK|ZOLD|BARNA|BORDO|SZURKE|ALAP`).
+
+```bat
+python -m hxbase run examples\szamla\szamla.prg
+build.bat examples\szamla\szamla.prg
+```
+
 ## Nyelv (MVP, lásd SPEC.md)
 
 - `@ sor,oszlop SAY kif [COLOR "W/B"]`, `@ sor,oszlop GET valto`, `READ`, `CLEAR`, `?`, `??`

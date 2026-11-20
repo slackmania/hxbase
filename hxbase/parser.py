@@ -448,10 +448,14 @@ def parse_stmt(p, no, text):
         need(m, f"{no}. sor: hibas fuggvenyfej: {u}")
         args = [a.strip().upper() for a in (m.group(2) or "").split(",") if a.strip()]
         body = parse_block(p, {"RETURN"})
-        # RETURN-t is beolvassuk, de nem kotelezo
+        # zaro RETURN a fuggveny resze (kulonben top-level utasitas maradna)
         ret = None
         cur = p.peek()
-        return {"t": "funcdef", "line": no, "name": m.group(1).upper(), "args": args, "body": body}
+        if cur and cur[1].strip().upper().startswith("RETURN"):
+            p.next()
+            rest = cur[1].strip()[6:].strip()
+            ret = ex(rest) if rest else None
+        return {"t": "funcdef", "line": no, "name": m.group(1).upper(), "args": args, "body": body, "ret": ret}
 
     if k == "TRY":
         body = parse_block(p, {"CATCH", "ENDTRY"})
@@ -614,8 +618,10 @@ def parse_stmt(p, no, text):
         need(m, f"Hibas INPUT: {u}")
         return {"t": "input", "line": no, "var": (m.group(1) or "").upper() or None, "prompt": ex(m.group(2)) if m.group(2) else None}
     if uu.startswith("MSGBOX") or uu.startswith("MESSAGEBOX"):
-        inner = re.sub(r"^(MSGBOX|MESSAGEBOX)\s*", "", u, flags=re.I)
-        return {"t": "msgbox", "line": no, "expr": ex(inner.strip("() ")) if inner else {"t": "lit", "v": ""}}
+        inner = re.sub(r"^(MSGBOX|MESSAGEBOX)\s*", "", u, flags=re.I).strip()
+        if inner.startswith("(") and inner.endswith(")"):
+            inner = inner[1:-1]
+        return {"t": "msgbox", "line": no, "expr": ex(inner) if inner else {"t": "lit", "v": ""}}
     if uu.startswith("DO "):
         # DO fuggvenyhivas
         rest = u[3:].strip()
