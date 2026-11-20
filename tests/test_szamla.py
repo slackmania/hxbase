@@ -28,6 +28,7 @@ DO szamla_storno()
 DO szamla_pdf()
 DO szamla_storno()
 DO szamla_keszit()
+DO teszt_picker()
 """
 
 INPUTS = {
@@ -98,7 +99,10 @@ def test_szamla_flow():
     assert q(tmp, "cikk.db", "SELECT keszlet FROM cikk") == [(10.0,)]
     # sorszamok
     assert q(tmp, "sorszam.db", "SELECT tip, utolso FROM sorszam ORDER BY tip") == [("C", 1), ("S", 2), ("V", 1), ("Z", 1)]
+    # valaszto listak (?-re): vevo + cikk talal, ures listak ures kodot adnak
+    assert "PICK:V00001,C00001,," in " ".join(sc.lists)
     # PDF-ek
+    assert "PICK:V00001,C00001,," in " ".join(sc.lists)
     for name in ("yxas-" + YEAR + "-000001.pdf", "yxas-" + YEAR + "-000002.pdf", "SZ-" + YEAR + "-000001.pdf"):
         p = os.path.join(tmp, name)
         assert os.path.exists(p), name

@@ -171,6 +171,194 @@ FUNCTION legfrissebb_barmely()
   CLOSE ALL
 RETURN m_talalt
 
+* ============ VALASZTO LISTAK (?-re) ============
+* Egyik kodot sem kell fejben tartani: kod helyett ? = lista.
+FUNCTION valassz_vevo()
+  CLOSE ALL
+  USE vevo
+  m_lista = ""
+  GO TOP
+  DO WHILE .NOT. EOF()
+    m_lista = m_lista + ALLTRIM(KOD) + " " + STRTRAN(ALLTRIM(NEV), ",", ";") + ","
+    SKIP
+  ENDDO
+  CLOSE ALL
+  IF EMPTY(m_lista)
+    MSGBOX("Nincs vevo - elobb vidd fel")
+    RETURN ""
+  ENDIF
+  MENU m_lista TO m_val TITLE "Vevo valasztas"
+  IF m_val <= 0
+    RETURN ""
+  ENDIF
+  CLOSE ALL
+  USE vevo
+  GO TOP
+  m_i = 0
+  m_kod = ""
+  DO WHILE .NOT. EOF()
+    m_i = m_i + 1
+    IF m_i = m_val
+      m_kod = KOD
+      EXIT
+    ENDIF
+    SKIP
+  ENDDO
+  CLOSE ALL
+RETURN m_kod
+
+FUNCTION valassz_cikk()
+  CLOSE ALL
+  USE cikk
+  m_lista = ""
+  GO TOP
+  DO WHILE .NOT. EOF()
+    m_lista = m_lista + ALLTRIM(KOD) + " " + STRTRAN(ALLTRIM(NEV), ",", ";") + " [" + HFMT(KESZLET) + "],"
+    SKIP
+  ENDDO
+  CLOSE ALL
+  IF EMPTY(m_lista)
+    MSGBOX("Nincs cikk - elobb vidd fel")
+    RETURN ""
+  ENDIF
+  MENU m_lista TO m_val TITLE "Cikk valasztas"
+  IF m_val <= 0
+    RETURN ""
+  ENDIF
+  CLOSE ALL
+  USE cikk
+  GO TOP
+  m_i = 0
+  m_kod = ""
+  DO WHILE .NOT. EOF()
+    m_i = m_i + 1
+    IF m_i = m_val
+      m_kod = KOD
+      EXIT
+    ENDIF
+    SKIP
+  ENDDO
+  CLOSE ALL
+RETURN m_kod
+
+FUNCTION valassz_szall()
+  CLOSE ALL
+  USE szall
+  m_lista = ""
+  GO TOP
+  DO WHILE .NOT. EOF()
+    IF .NOT. SZAMLAZVA
+      m_lista = m_lista + ALLTRIM(SZAM) + " " + ALLTRIM(VEVO) + ","
+    ENDIF
+    SKIP
+  ENDDO
+  CLOSE ALL
+  IF EMPTY(m_lista)
+    MSGBOX("Nincs szamlazhato szallito")
+    RETURN ""
+  ENDIF
+  MENU m_lista TO m_val TITLE "Szallito valasztas"
+  IF m_val <= 0
+    RETURN ""
+  ENDIF
+  CLOSE ALL
+  USE szall
+  GO TOP
+  m_i = 0
+  m_kod = ""
+  DO WHILE .NOT. EOF()
+    IF .NOT. SZAMLAZVA
+      m_i = m_i + 1
+      IF m_i = m_val
+        m_kod = SZAM
+        EXIT
+      ENDIF
+    ENDIF
+    SKIP
+  ENDDO
+  CLOSE ALL
+RETURN m_kod
+
+FUNCTION valassz_szamla()
+  CLOSE ALL
+  USE szamla
+  m_lista = ""
+  GO TOP
+  DO WHILE .NOT. EOF()
+    m_lista = m_lista + ALLTRIM(SZAM) + " " + ALLTRIM(TIPUS) + ","
+    SKIP
+  ENDDO
+  CLOSE ALL
+  IF EMPTY(m_lista)
+    MSGBOX("Nincs szamla")
+    RETURN ""
+  ENDIF
+  MENU m_lista TO m_val TITLE "Szamla valasztas"
+  IF m_val <= 0
+    RETURN ""
+  ENDIF
+  CLOSE ALL
+  USE szamla
+  GO TOP
+  m_i = 0
+  m_kod = ""
+  DO WHILE .NOT. EOF()
+    m_i = m_i + 1
+    IF m_i = m_val
+      m_kod = SZAM
+      EXIT
+    ENDIF
+    SKIP
+  ENDDO
+  CLOSE ALL
+RETURN m_kod
+
+FUNCTION valassz_szamla_storno()
+  CLOSE ALL
+  USE szamla
+  m_lista = ""
+  GO TOP
+  DO WHILE .NOT. EOF()
+    IF TIPUS = "SZAMLA" .AND. .NOT. STORNOZVA
+      m_lista = m_lista + ALLTRIM(SZAM) + " " + ALLTRIM(VEVO) + ","
+    ENDIF
+    SKIP
+  ENDDO
+  CLOSE ALL
+  IF EMPTY(m_lista)
+    MSGBOX("Nincs stornozhato szamla")
+    RETURN ""
+  ENDIF
+  MENU m_lista TO m_val TITLE "Stornozando"
+  IF m_val <= 0
+    RETURN ""
+  ENDIF
+  CLOSE ALL
+  USE szamla
+  GO TOP
+  m_i = 0
+  m_kod = ""
+  DO WHILE .NOT. EOF()
+    IF TIPUS = "SZAMLA" .AND. .NOT. STORNOZVA
+      m_i = m_i + 1
+      IF m_i = m_val
+        m_kod = SZAM
+        EXIT
+      ENDIF
+    ENDIF
+    SKIP
+  ENDDO
+  CLOSE ALL
+RETURN m_kod
+
+FUNCTION teszt_picker()
+  m_p1 = valassz_vevo()
+  m_p2 = valassz_cikk()
+  m_p3 = valassz_szall()
+  m_p4 = valassz_szamla_storno()
+  ? "PICK:" + m_p1 + "," + m_p2 + "," + m_p3 + "," + m_p4
+RETURN
+
 * ============ TORZS ============
 FUNCTION torzs()
   DO WHILE .T.
@@ -351,8 +539,8 @@ FUNCTION bevet()
   m_kod = ""
   m_menny = ""
   m_ar = ""
-  @ 4,10 SAY "Cikk kod:"
-  @ 4,21 GET m_kod PICTURE "@!"
+  @ 4,10 SAY "Cikk kod (? = lista):"
+  @ 4,27 GET m_kod PICTURE "@!"
   @ 5,10 SAY "Mennyiseg:"
   @ 5,21 GET m_menny
   @ 6,10 SAY "Besar ar:"
@@ -360,6 +548,14 @@ FUNCTION bevet()
   READ
   IF EMPTY(m_kod)
     RETURN
+  ENDIF
+  IF m_kod = "?"
+    m_kod = valassz_cikk()
+    IF EMPTY(m_kod)
+      RETURN
+    ENDIF
+    CLOSE ALL
+    USE cikk
   ENDIF
   m_db = NUM(m_menny)
   m_bar = NUM(m_ar)
@@ -417,14 +613,26 @@ FUNCTION szall_uj()
   @ 2,10 SAY "Uj szallitolevel"
   m_vevo = ""
   m_megj = ""
-  @ 4,10 SAY "Vevo kod:"
-  @ 4,21 GET m_vevo PICTURE "@!"
+  @ 4,10 SAY "Vevo kod (? = lista):"
+  @ 4,27 GET m_vevo PICTURE "@!"
   @ 5,10 SAY "Megjegyzes:"
   @ 5,22 GET m_megj
   READ
   IF EMPTY(m_vevo)
+    m_vevo = valassz_vevo()
+  ELSE
+    IF m_vevo = "?"
+      m_vevo = valassz_vevo()
+    ENDIF
+  ENDIF
+  IF EMPTY(m_vevo)
     RETURN
   ENDIF
+  CLOSE ALL
+  USE szall
+  USE szalltet
+  USE vevo
+  USE cikk
   SELECT vevo
   LOCATE FOR KOD = m_vevo
   IF EOF()
@@ -445,11 +653,21 @@ FUNCTION szall_uj()
     @ 2,10 SAY "Szallito: " + m_szam
     m_cikk = ""
     m_menny = ""
-    @ 4,10 SAY "Cikk kod (ures = vege):"
-    @ 4,31 GET m_cikk PICTURE "@!"
+    @ 4,10 SAY "Cikk kod (? = lista, ures = vege):"
+    @ 4,41 GET m_cikk PICTURE "@!"
     @ 5,10 SAY "Mennyiseg:"
     @ 5,21 GET m_menny
     READ
+    IF m_cikk = "?"
+      m_cikk = valassz_cikk()
+      IF EMPTY(m_cikk)
+        EXIT
+      ENDIF
+      CLOSE ALL
+      USE szall
+      USE szalltet
+      USE cikk
+    ENDIF
     IF EMPTY(m_cikk)
       EXIT
     ENDIF
@@ -524,8 +742,8 @@ FUNCTION szamla_keszit()
   @ 2,10 SAY "Szamla keszitese szallitobol"
   m_szall = ""
   m_fizmod = ""
-  @ 4,10 SAY "Szallito szama (ures = legfrissebb):"
-  @ 4,41 GET m_szall PICTURE "@!"
+  @ 4,10 SAY "Szallito szama (ures = legfrissebb, ? = lista):"
+  @ 4,53 GET m_szall PICTURE "@!"
   @ 5,10 SAY "Fizetes modja:"
   @ 5,25 GET m_fizmod
   READ
@@ -534,6 +752,10 @@ FUNCTION szamla_keszit()
   ENDIF
   IF EMPTY(m_szall)
     m_szall = legfrissebb_szall()
+  ELSE
+    IF m_szall = "?"
+      m_szall = valassz_szall()
+    ENDIF
   ENDIF
   IF EMPTY(m_szall)
     MSGBOX("Nincs szamlazhato szallito")
@@ -622,11 +844,15 @@ FUNCTION szamla_storno()
   CLEAR
   @ 2,10 SAY "Szamla stornozasa"
   m_eredeti = ""
-  @ 4,10 SAY "Eredeti szamla (ures = legfrissebb):"
-  @ 4,42 GET m_eredeti PICTURE "@!"
+  @ 4,10 SAY "Eredeti szamla (ures = legfrissebb, ? = lista):"
+  @ 4,52 GET m_eredeti PICTURE "@!"
   READ
   IF EMPTY(m_eredeti)
     m_eredeti = legfrissebb_szamla()
+  ELSE
+    IF m_eredeti = "?"
+      m_eredeti = valassz_szamla_storno()
+    ENDIF
   ENDIF
   IF EMPTY(m_eredeti)
     MSGBOX("Nincs stornozhato szamla")
@@ -701,11 +927,15 @@ FUNCTION szamla_pdf()
   CLEAR
   @ 2,10 SAY "Szamla nyomtatasa (PDF)"
   m_szam = ""
-  @ 4,10 SAY "Szamla szama (ures = legfrissebb):"
-  @ 4,41 GET m_szam PICTURE "@!"
+  @ 4,10 SAY "Szamla szama (ures = legfrissebb, ? = lista):"
+  @ 4,53 GET m_szam PICTURE "@!"
   READ
   IF EMPTY(m_szam)
     m_szam = legfrissebb_barmely()
+  ELSE
+    IF m_szam = "?"
+      m_szam = valassz_szamla()
+    ENDIF
   ENDIF
   IF EMPTY(m_szam)
     MSGBOX("Nincs szamla")
@@ -797,11 +1027,15 @@ FUNCTION szall_pdf()
   CLEAR
   @ 2,10 SAY "Szallitolevel nyomtatasa (PDF)"
   m_szam = ""
-  @ 4,10 SAY "Szallito szama (ures = legfrissebb):"
-  @ 4,41 GET m_szam PICTURE "@!"
+  @ 4,10 SAY "Szallito szama (ures = legfrissebb, ? = lista):"
+  @ 4,54 GET m_szam PICTURE "@!"
   READ
   IF EMPTY(m_szam)
     m_szam = legfrissebb_szall()
+  ELSE
+    IF m_szam = "?"
+      m_szam = valassz_szall()
+    ENDIF
   ENDIF
   IF EMPTY(m_szam)
     MSGBOX("Nincs szallitolevel")
